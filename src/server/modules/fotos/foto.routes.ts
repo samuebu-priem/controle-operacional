@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
+import sharp from "sharp";
 import { prisma } from "../../lib/prisma";
 import { AppError } from "../../middleware/errorHandler";
 
@@ -13,15 +14,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (_req, file, cb) => {
-    const safeName = file.originalname.replace(/[^\w.-]+/g, "_");
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
-  }
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -45,6 +38,44 @@ function normalizeArray(value: unknown): string[] {
   return [String(value)];
 }
 
+function buildCompressedFileName(originalName: string) {
+  const parsed = path.parse(originalName);
+  const baseName = (parsed.name || "foto").replace(/[^\w.-]+/g, "_");
+  return `${Date.now()}-${Math.round(Math.random() * 1e9)}-${baseName}.jpg`;
+}
+
+async function compressAndSaveImage(file: Express.Multer.File) {
+  const filename = buildCompressedFileName(file.originalname);
+  const filePath = path.join(uploadsDir, filename);
+
+  await sharp(file.buffer)
+    .rotate()
+    .resize({
+      width: 1600,
+      height: 1600,
+      fit: "inside",
+      withoutEnlargement: true
+    })
+    .jpeg({
+      quality: 72,
+      mozjpeg: true
+    })
+    .toFile(filePath);
+
+  return {
+    filename,
+    filePath
+  };
+}
+
+function removeFiles(filePaths: string[]) {
+  for (const filePath of filePaths) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+}
+
 fotoRoutes.post(
   "/inspecoes/:id/fotos",
   upload.array("files[]", 20),
@@ -65,58 +96,69 @@ fotoRoutes.post(
 
       const legendas = normalizeArray(req.body.legenda);
       const pontoCriticoIds = normalizeArray(req.body.pontoCriticoId);
+      const compressedFiles: Array<{ filename: string; filePath: string }> = [];
 
-      const fotos = await prisma.$transaction(async (tx: typeof prisma) => {
-        const created: Array<{
-          id: string;
-          inspecaoId: string;
-          pontoCriticoId: string | null;
-          imageUrl: string;
-          fileName: string;
-          legenda: string | null;
-          createdAt: Date;
-        }> = [];
-
-        for (let index = 0; index < files.length; index += 1) {
-          const file = files[index];
-          const legenda = legendas[index] ? legendas[index].trim() : null;
-          const pontoCriticoId = pontoCriticoIds[index] ? pontoCriticoIds[index].trim() : null;
-
-          const foto = await tx.fotoInspecao.create({
-            data: {
-              inspecaoId: req.params.id,
-              pontoCriticoId: pontoCriticoId || null,
-              imageUrl: `/uploads/${file.filename}`,
-              fileName: file.originalname,
-              legenda
-            }
-          });
-
-          created.push(foto);
+      try {
+        for (const file of files) {
+          compressedFiles.push(await compressAndSaveImage(file));
         }
 
-        return created;
-      });
+        const fotos = await prisma.$transaction(async (tx: typeof prisma) => {
+          const created: Array<{
+            id: string;
+            inspecaoId: string;
+            pontoCriticoId: string | null;
+            imageUrl: string;
+            fileName: string;
+            legenda: string | null;
+            createdAt: Date;
+          }> = [];
 
-      return res.status(201).json({
-        fotos: fotos.map((foto: {
-          id: string;
-          inspecaoId: string;
-          pontoCriticoId: string | null;
-          imageUrl: string;
-          fileName: string;
-          legenda: string | null;
-          createdAt: Date;
-        }) => ({
-          id: foto.id,
-          inspecaoId: foto.inspecaoId,
-          pontoCriticoId: foto.pontoCriticoId,
-          imageUrl: foto.imageUrl,
-          fileName: foto.fileName,
-          legenda: foto.legenda,
-          createdAt: foto.createdAt.toISOString()
-        }))
-      });
+          for (let index = 0; index < files.length; index += 1) {
+            const file = files[index];
+            const compressedFile = compressedFiles[index];
+            const legenda = legendas[index] ? legendas[index].trim() : null;
+            const pontoCriticoId = pontoCriticoIds[index] ? pontoCriticoIds[index].trim() : null;
+
+            const foto = await tx.fotoInspecao.create({
+              data: {
+                inspecaoId: req.params.id,
+                pontoCriticoId: pontoCriticoId || null,
+                imageUrl: `/uploads/${compressedFile.filename}`,
+                fileName: file.originalname,
+                legenda
+              }
+            });
+
+            created.push(foto);
+          }
+
+          return created;
+        });
+
+        return res.status(201).json({
+          fotos: fotos.map((foto: {
+            id: string;
+            inspecaoId: string;
+            pontoCriticoId: string | null;
+            imageUrl: string;
+            fileName: string;
+            legenda: string | null;
+            createdAt: Date;
+          }) => ({
+            id: foto.id,
+            inspecaoId: foto.inspecaoId,
+            pontoCriticoId: foto.pontoCriticoId,
+            imageUrl: foto.imageUrl,
+            fileName: foto.fileName,
+            legenda: foto.legenda,
+            createdAt: foto.createdAt.toISOString()
+          }))
+        });
+      } catch (error) {
+        removeFiles(compressedFiles.map((file) => file.filePath));
+        throw error;
+      }
     } catch (error) {
       return next(error);
     }
