@@ -96,27 +96,28 @@ export function buildWhatsAppInspectionMessage(inspecao: WhatsAppInspection) {
   const inspetor = normalizeText(inspecao.nomeInspetor, "Nao informado");
 
   const header = [
-    `Frota: ${inspecao.frota?.numeroFrota ?? inspecao.frotaId}`,
-    `Placa: ${inspecao.frota?.placa ?? "Nao informada"}`,
-    `Inspetor: ${inspetor}`,
-    `Observacao: ${observacao}`
+    `*Frota:* ${inspecao.frota?.numeroFrota ?? inspecao.frotaId}`,
+    `*Placa:* ${inspecao.frota?.placa ?? "Nao informada"}`,
+    `*Inspetor:* ${inspetor}`,
+    `*Observacao:* ${observacao}`
   ];
 
   const pontos =
     inspecao.pontosCriticos.length > 0
       ? inspecao.pontosCriticos
           .map((ponto, index) => {
-            const prefix = inspecao.pontosCriticos.length > 1 ? `Ponto critico ${index + 1}:\n` : "Ponto critico:\n";
+            const prefix =
+              inspecao.pontosCriticos.length > 1 ? `*Ponto critico ${index + 1}:*\n` : "*Ponto critico:*\n";
             return (
               `${prefix}` +
-              `Tipo: ${formatLabel(ponto.categoria, "Nao informado")}\n` +
-              `Localizacao interna: ${formatLabel(ponto.localizacao, "Nao informada")}\n` +
-              `Descricao: ${formatLabel(ponto.descricao, "Nao informada")}\n` +
-              `Procedimento necessario: ${formatLabel(ponto.procedimentoRecomendado, "Nao informado")}`
+              `*Tipo:* ${formatLabel(ponto.categoria, "Nao informado")}\n` +
+              `*Localizacao interna:* ${formatLabel(ponto.localizacao, "Nao informada")}\n` +
+              `*Descricao:* ${formatLabel(ponto.descricao, "Nao informada")}\n` +
+              `*Procedimento necessario:* ${formatLabel(ponto.procedimentoRecomendado, "Nao informado")}`
             );
           })
           .join("\n\n")
-      : "Ponto critico:\nNenhum ponto critico registrado.";
+      : "*Ponto critico:*\nNenhum ponto critico registrado.";
 
   return [...header, "", pontos].join("\n");
 }
