@@ -1,0 +1,211 @@
+import type {
+  ApiErrorResponse,
+  FotoInspecao,
+  Frota,
+  Inspecao,
+  Severidade,
+  StatusInspecao,
+  TipoInspecao
+} from "../shared/types";
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" })
+    }
+  });
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    throw new Error(error?.message ?? "Erro ao comunicar com a API");
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export async function listFrotas() {
+  return request<{ frotas: Frota[] }>("/api/frotas");
+}
+
+export async function loginUser(payload: { email: string; password: string }) {
+  return request<{
+    user: {
+      id: string;
+      name: string;
+      email: string;
+    };
+    token: string;
+  }>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function searchFrotas(query: string) {
+  return request<{ frotas: Frota[] }>(`/api/frotas/search?query=${encodeURIComponent(query)}`);
+}
+
+export async function getFrotaHistorico(id: string) {
+  return request<{
+    frota: Frota;
+    ultimaInspecao: Inspecao | null;
+    inspecoes: Inspecao[];
+    resumoRecorrencia: {
+      itensRecorrentes: Array<{ categoria: string; localizacao: string; ocorrencias: number }>;
+      mensagemResumo: string;
+    } | null;
+  }>(`/api/frotas/${id}/historico`);
+}
+
+export async function getFrotaByNumero(numeroFrota: string) {
+  return request<{
+    frota: Frota | null;
+    ultimaInspecao: Inspecao | null;
+    resumoRecorrencia: {
+      itensRecorrentes: Array<{ categoria: string; localizacao: string; ocorrencias: number }>;
+      mensagemResumo: string;
+    } | null;
+  }>(`/api/frotas/numero/${encodeURIComponent(numeroFrota)}/historico`);
+}
+
+export const getFrotaPorNumero = getFrotaByNumero;
+
+export async function updateFrota(
+  id: string,
+  payload: Partial<{
+    numeroFrota: string;
+    placa: string;
+    tipoEquipamento: string;
+    material: string;
+    capacidade: string;
+    observacoesFixas: string | null;
+  }>
+) {
+  return request<{ frota: Frota }>(`/api/frotas/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createInspecao(payload: {
+  frotaId: string;
+  numeroFrota: string;
+  placa: string;
+  tipoEquipamento: string;
+  dataInspecao: string;
+  tipoInspecao: TipoInspecao;
+  status: StatusInspecao;
+  observacoesGerais?: string | null;
+  nomeInspetor: string;
+  pontosCriticos: Array<{
+    categoria: string;
+    localizacao: string;
+    descricao: string;
+    severidade: Severidade;
+    procedimentoRecomendado: string;
+  }>;
+}) {
+  return request<{ inspecao: Inspecao }>("/api/inspecoes", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function listInspecoes(filters: {
+  search?: string;
+  frota?: string;
+  placa?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+} = {}) {
+  const params = new URLSearchParams();
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  if (filters.frota?.trim()) params.set("frota", filters.frota.trim());
+  if (filters.placa?.trim()) params.set("placa", filters.placa.trim());
+  if (filters.from?.trim()) params.set("from", filters.from.trim());
+  if (filters.to?.trim()) params.set("to", filters.to.trim());
+  if (filters.status?.trim()) params.set("status", filters.status.trim());
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<{
+    inspecoes: Array<Inspecao & { frota?: Pick<Frota, "numeroFrota" | "placa"> | null }>;
+  }>(`/api/inspecoes${query}`);
+}
+
+export async function getInspecaoById(id: string) {
+  return request<{
+    inspecao: Inspecao & { frota?: Pick<Frota, "numeroFrota" | "placa"> | null };
+  }>(`/api/inspecoes/${id}`);
+}
+
+export async function updateInspecao(
+  inspecaoId: string,
+  payload: {
+    observacoesGerais?: string | null;
+    pontosCriticos: Array<{
+      id?: string;
+      categoria: string;
+      localizacao: string;
+      descricao: string;
+      severidade: Severidade;
+      procedimentoRecomendado: string;
+    }>;
+    fotosToRemove?: string[];
+  }
+) {
+  return request<{ inspecao: Inspecao }>(`/api/inspecoes/${inspecaoId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteInspecao(inspecaoId: string) {
+  return request<{ ok: true }>(`/api/inspecoes/${inspecaoId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function deleteFoto(fotoId: string) {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_BASE}/api/fotos/${fotoId}`, {
+    method: "DELETE",
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    throw new Error(error?.message ?? "Erro ao remover foto");
+  }
+}
+
+export async function deleteFrota(frotaId: string) {
+  return request<{ ok: true }>(`/api/frotas/${frotaId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function uploadFotos(inspecaoId: string, formData: FormData) {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_BASE}/api/inspecoes/${inspecaoId}/fotos`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    throw new Error(error?.message ?? "Erro ao enviar fotos");
+  }
+
+  return response.json() as Promise<{ fotos: FotoInspecao[] }>;
+}

@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  password  String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  inspecoes Inspecao[]
+}
+
+model Frota {
+  id               String     @id @default(cuid())
+  numeroFrota      String     @unique
+  placa            String
+  tipoEquipamento  String
+  material         String
+  capacidade       String
+  observacoesFixas String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  inspecoes        Inspecao[]
+
+  @@index([numeroFrota])
+  @@index([placa])
+}
+
+model Inspecao {
+  id                String         @id @default(cuid())
+  frotaId           String
+  userId            String?
+  dataInspecao      DateTime
+  tipoInspecao      TipoInspecao
+  status            StatusInspecao
+  observacoesGerais String?
+  nomeInspetor      String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  fotos             FotoInspecao[]
+  frota             Frota          @relation(fields: [frotaId], references: [id], onDelete: Cascade)
+  user              User?          @relation(fields: [userId], references: [id])
+  pontosCriticos    PontoCritico[]
+
+  @@index([frotaId, dataInspecao])
+  @@index([tipoInspecao])
+  @@index([status])
+}
+
+model PontoCritico {
+  id                      String         @id @default(cuid())
+  inspecaoId              String
+  categoria               String
+  localizacao             String
+  descricao               String
+  severidade              Severidade
+  createdAt               DateTime       @default(now())
+  procedimentoRecomendado String
+  fotos                   FotoInspecao[]
+  inspecao                Inspecao       @relation(fields: [inspecaoId], references: [id], onDelete: Cascade)
+
+  @@index([inspecaoId])
+  @@index([categoria])
+  @@index([localizacao])
+}
+
+model FotoInspecao {
+  id             String        @id @default(cuid())
+  inspecaoId     String
+  pontoCriticoId String?
+  imageUrl       String
+  fileName       String
+  legenda        String?
+  createdAt      DateTime      @default(now())
+  inspecao       Inspecao      @relation(fields: [inspecaoId], references: [id], onDelete: Cascade)
+  pontoCritico   PontoCritico? @relation(fields: [pontoCriticoId], references: [id])
+
+  @@index([inspecaoId])
+  @@index([pontoCriticoId])
+}
+
+enum TipoInspecao {
+  ANTES_LAVAGEM
+  APOS_LAVAGEM
+}
+
+enum StatusInspecao {
+  APROVADO
+  REPROVADO
+  COM_OBSERVACAO
+}
+
+enum Severidade {
+  LEVE
+  MEDIA
+  GRAVE
+}
