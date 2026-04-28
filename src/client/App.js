@@ -5,12 +5,17 @@ import HistoricoInspecoesPage from "./pages/HistoricoInspecoesPage";
 import InspecaoDetalhePage from "./pages/InspecaoDetalhePage";
 import LoginPage from "./pages/LoginPage";
 import NovaInspecaoPage from "./pages/NovaInspecaoPage";
+import ProfilePage from "./pages/ProfilePage";
 import RegistroFrotasPage from "./pages/RegistroFrotasPage";
-import { isAuthenticated } from "./utils/auth";
+import { isAuthenticated, isProfileComplete } from "./utils/auth";
 
-function ProtectedRoute({ children }) {
+function ProtectedRoute({ children, requireProfile = true }) {
   if (!isAuthenticated()) {
     return _jsx(Navigate, { to: "/login", replace: true });
+  }
+
+  if (requireProfile && !isProfileComplete()) {
+    return _jsx(Navigate, { to: "/perfil", replace: true });
   }
 
   return children;
@@ -20,6 +25,7 @@ export default function App() {
   return _jsxs(Routes, {
     children: [
       _jsx(Route, { path: "/login", element: _jsx(LoginPage, {}) }),
+      _jsx(Route, { path: "/perfil", element: _jsx(ProtectedRoute, { requireProfile: false, children: _jsx(ProfilePage, {}) }) }),
       _jsx(Route, { path: "/", element: _jsx(ProtectedRoute, { children: _jsx(HomePage, {}) }) }),
       _jsx(Route, { path: "/nova-inspecao", element: _jsx(ProtectedRoute, { children: _jsx(NovaInspecaoPage, {}) }) }),
       _jsx(Route, { path: "/historico", element: _jsx(ProtectedRoute, { children: _jsx(HistoricoInspecoesPage, {}) }) }),

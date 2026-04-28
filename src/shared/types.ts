@@ -5,6 +5,8 @@ export type Severidade = "LEVE" | "MEDIA" | "GRAVE";
 export interface UserSession {
   id: string;
   name: string;
+  fullName: string | null;
+  jobTitle: string | null;
   email: string;
   token: string;
 }

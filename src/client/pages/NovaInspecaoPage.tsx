@@ -7,11 +7,14 @@ import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import CriticalPointForm, { type DraftPontoCritico } from "../components/inspecao/CriticalPointForm";
 import InspectionForm from "../components/inspecao/InspectionForm";
+import { getAuthUser } from "../utils/auth";
 
 type DraftPontoCriticoComArquivos = DraftPontoCritico;
 
 export default function NovaInspecaoPage() {
   const navigate = useNavigate();
+  const authUser = getAuthUser();
+  const inspectorName = authUser?.fullName?.trim() || authUser?.name || "";
   const [frotaEncontrada, setFrotaEncontrada] = useState<Frota | null>(null);
   const [tipoConfirmado, setTipoConfirmado] = useState(false);
   const [values, setValues] = useState({
@@ -21,7 +24,7 @@ export default function NovaInspecaoPage() {
     dataInspecao: new Date().toISOString().slice(0, 16),
     tipoInspecao: "ANTES_LAVAGEM" as TipoInspecao,
     status: "COM_OBSERVACAO" as StatusInspecao,
-    nomeInspetor: "",
+    nomeInspetor: inspectorName,
     observacoesGerais: ""
   });
   const [pontosCriticos, setPontosCriticos] = useState<DraftPontoCriticoComArquivos[]>([]);
@@ -29,6 +32,10 @@ export default function NovaInspecaoPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [savedInspectionId, setSavedInspectionId] = useState("");
+
+  useEffect(() => {
+    setValues((current) => ({ ...current, nomeInspetor: inspectorName }));
+  }, [inspectorName]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {

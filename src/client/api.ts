@@ -39,11 +39,28 @@ export async function loginUser(payload: { email: string; password: string }) {
     user: {
       id: string;
       name: string;
+      fullName: string | null;
+      jobTitle: string | null;
       email: string;
     };
     token: string;
   }>("/api/auth/login", {
     method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateMyProfile(payload: { fullName: string; jobTitle: string }) {
+  return request<{
+    user: {
+      id: string;
+      name: string;
+      fullName: string | null;
+      jobTitle: string | null;
+      email: string;
+    };
+  }>("/api/auth/me/profile", {
+    method: "PATCH",
     body: JSON.stringify(payload)
   });
 }

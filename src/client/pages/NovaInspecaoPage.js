@@ -6,8 +6,11 @@ import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import CriticalPointForm from "../components/inspecao/CriticalPointForm";
 import InspectionForm from "../components/inspecao/InspectionForm";
+import { getAuthUser } from "../utils/auth";
 export default function NovaInspecaoPage() {
     const navigate = useNavigate();
+    const authUser = getAuthUser();
+    const inspectorName = authUser?.fullName?.trim() || authUser?.name || "";
     const [frotaEncontrada, setFrotaEncontrada] = useState(null);
     const [tipoConfirmado, setTipoConfirmado] = useState(false);
     const [values, setValues] = useState({
@@ -17,7 +20,7 @@ export default function NovaInspecaoPage() {
         dataInspecao: new Date().toISOString().slice(0, 16),
         tipoInspecao: "ANTES_LAVAGEM",
         status: "COM_OBSERVACAO",
-        nomeInspetor: "",
+        nomeInspetor: inspectorName,
         observacoesGerais: ""
     });
     const [pontosCriticos, setPontosCriticos] = useState([]);
@@ -25,6 +28,9 @@ export default function NovaInspecaoPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [savedInspectionId, setSavedInspectionId] = useState("");
+    useEffect(() => {
+        setValues((current) => ({ ...current, nomeInspetor: inspectorName }));
+    }, [inspectorName]);
     useEffect(() => {
         const timeout = window.setTimeout(() => {
             const numero = values.numeroFrota.trim();
@@ -124,5 +130,5 @@ export default function NovaInspecaoPage() {
             setSaving(false);
         }
     }
-    return (_jsx(AppLayout, { children: _jsxs("div", { className: "page-frame", children: [_jsx(AppHeader, { title: "Nova inspe\u00E7\u00E3o", subtitle: "Crie a inspe\u00E7\u00E3o, inclua pontos cr\u00EDticos e fotos.", showBack: true }), error ? _jsx("p", { className: "notice notice--error", children: error }) : null, success ? _jsx("p", { className: "notice notice--success", children: success }) : null, _jsx(InspectionForm, { values: values, onChange: handleChange, onConfirmType: () => setTipoConfirmado(Boolean(values.tipoEquipamento)), onSubmit: handleSubmit, loading: saving, isFrotaEncontrada: Boolean(frotaEncontrada), tipoConfirmado: tipoConfirmado }), _jsxs("section", { className: "section-card", children: [_jsx("div", { className: "section-head", children: _jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Pontos cr\u00EDticos" }), _jsx("h2", { className: "section-title", children: "Itens opcionais" })] }) }), _jsx(CriticalPointForm, { pontosCriticos: pontosCriticos, onAdd: addPonto, onUpdate: updatePonto, onRemove: removePonto, onChangeFiles: updatePontoFiles, onRemoveFile: removePontoFile })] })] }) }));
+    return (_jsx(AppLayout, { children: _jsxs("div", { className: "page-frame", children: [_jsx(AppHeader, { title: "Nova inspeção", subtitle: "Crie a inspeção, inclua pontos críticos e fotos.", showBack: true }), error ? _jsx("p", { className: "notice notice--error", children: error }) : null, success ? _jsx("p", { className: "notice notice--success", children: success }) : null, _jsx(InspectionForm, { values: values, onChange: handleChange, onConfirmType: () => setTipoConfirmado(Boolean(values.tipoEquipamento)), onSubmit: handleSubmit, loading: saving, isFrotaEncontrada: Boolean(frotaEncontrada), tipoConfirmado: tipoConfirmado }), _jsxs("section", { className: "section-card", children: [_jsx("div", { className: "section-head", children: _jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Pontos críticos" }), _jsx("h2", { className: "section-title", children: "Itens opcionais" })] }) }), _jsx(CriticalPointForm, { pontosCriticos: pontosCriticos, onAdd: addPonto, onUpdate: updatePonto, onRemove: removePonto, onChangeFiles: updatePontoFiles, onRemoveFile: removePontoFile })] })] }) }));
 }

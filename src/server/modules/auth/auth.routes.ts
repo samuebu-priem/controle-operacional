@@ -39,6 +39,8 @@ authRoutes.post("/login", async (req, res, next) => {
       user: {
         id: user.id,
         name: user.name,
+        fullName: user.fullName,
+        jobTitle: user.jobTitle,
         email: user.email
       },
       token
@@ -61,6 +63,8 @@ authRoutes.get("/me", requireAuth, async (req, res, next) => {
       select: {
         id: true,
         name: true,
+        fullName: true,
+        jobTitle: true,
         email: true,
         createdAt: true,
         updatedAt: true
@@ -74,6 +78,50 @@ authRoutes.get("/me", requireAuth, async (req, res, next) => {
     return res.json({
       user
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+authRoutes.patch("/me/profile", requireAuth, async (req, res, next) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+
+    if (!authReq.user) {
+      throw new AppError("UsuÃ¡rio nÃ£o autenticado", 401, "UNAUTHORIZED");
+    }
+
+    const { fullName, jobTitle } = req.body ?? {};
+
+    if (typeof fullName !== "string" || typeof jobTitle !== "string") {
+      throw new AppError("Nome completo e funÃ§Ã£o sÃ£o obrigatÃ³rios", 400, "BAD_REQUEST");
+    }
+
+    const cleanFullName = fullName.trim();
+    const cleanJobTitle = jobTitle.trim();
+
+    if (!cleanFullName || !cleanJobTitle) {
+      throw new AppError("Nome completo e funÃ§Ã£o sÃ£o obrigatÃ³rios", 400, "BAD_REQUEST");
+    }
+
+    const user = await prisma.user.update({
+      where: { id: authReq.user.id },
+      data: {
+        fullName: cleanFullName,
+        jobTitle: cleanJobTitle
+      },
+      select: {
+        id: true,
+        name: true,
+        fullName: true,
+        jobTitle: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    return res.json({ user });
   } catch (error) {
     return next(error);
   }

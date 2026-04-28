@@ -31,8 +31,6 @@ app.use(errorHandler);
 
 const port = Number(process.env.PORT || 3001);
 
-if (process.argv[1] && fileURLToPath(new URL(`file://${process.argv[1]}`)) === __filename) {
-  app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-  });
-}
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});

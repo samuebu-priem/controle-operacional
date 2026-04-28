@@ -94,7 +94,13 @@ export default function InspectionForm({
               <option value="COM_OBSERVACAO">Com observação</option>
             </select>
           </label>
-          <Input label="Nome do inspetor" value={values.nomeInspetor} onChange={(e: ChangeEvent<HTMLInputElement>) => onChange("nomeInspetor", e.target.value)} />
+          <Input
+            label="Nome do inspetor"
+            value={values.nomeInspetor}
+            disabled
+            helperText="Preenchido automaticamente pelo perfil do usuario."
+            onChange={(e: ChangeEvent<HTMLInputElement>) => onChange("nomeInspetor", e.target.value)}
+          />
           <Textarea label="Observações gerais" value={values.observacoesGerais} onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange("observacoesGerais", e.target.value)} />
         </div>
       </div>

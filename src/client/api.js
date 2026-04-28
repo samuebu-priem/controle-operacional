@@ -24,6 +24,12 @@ export async function loginUser(payload) {
         body: JSON.stringify(payload)
     });
 }
+export async function updateMyProfile(payload) {
+    return request("/api/auth/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+    });
+}
 export async function searchFrotas(query) {
     return request(`/api/frotas/search?query=${encodeURIComponent(query)}`);
 }

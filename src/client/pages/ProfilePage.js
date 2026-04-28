@@ -1,0 +1,38 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
+import { updateMyProfile } from "../api";
+import AppHeader from "../components/layout/AppHeader";
+import AppLayout from "../components/layout/AppLayout";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
+import { getAuthUser, isAuthenticated, saveAuthUser } from "../utils/auth";
+export default function ProfilePage() {
+    const navigate = useNavigate();
+    const currentUser = getAuthUser();
+    const [fullName, setFullName] = useState(currentUser?.fullName ?? currentUser?.name ?? "");
+    const [jobTitle, setJobTitle] = useState(currentUser?.jobTitle ?? "");
+    const [error, setError] = useState("");
+    const [saving, setSaving] = useState(false);
+    if (!isAuthenticated()) {
+        return _jsx(Navigate, { to: "/login", replace: true });
+    }
+    async function handleSubmit(event) {
+        event.preventDefault();
+        setError("");
+        setSaving(true);
+        try {
+            const response = await updateMyProfile({ fullName, jobTitle });
+            saveAuthUser(response.user);
+            navigate("/", { replace: true });
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "Falha ao salvar perfil.");
+        }
+        finally {
+            setSaving(false);
+        }
+    }
+    return (_jsx(AppLayout, { children: _jsxs("div", { className: "page-frame", children: [_jsx(AppHeader, { title: "Perfil do usuario", subtitle: "Complete seus dados para iniciar inspecoes.", showLogout: true }), _jsx(Card, { className: "section-card card--elevated", children: _jsxs("form", { className: "form-grid", onSubmit: handleSubmit, children: [_jsx(Input, { label: "Nome completo", value: fullName, onChange: (event) => setFullName(event.target.value), required: true }), _jsx(Input, { label: "Funcao", value: jobTitle, onChange: (event) => setJobTitle(event.target.value), required: true }), error ? _jsx("p", { className: "notice notice--error", children: error }) : null, _jsx("div", { className: "detail-actions", children: _jsx(Button, { type: "submit", disabled: saving, children: saving ? "Salvando..." : "Salvar perfil" }) })] }) })] }) }));
+}

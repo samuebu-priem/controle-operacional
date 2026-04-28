@@ -35,6 +35,9 @@ export default function AppHeader({ title, subtitle, showBack = false, showLogou
               Voltar
             </Button>
           ) : null}
+          <Button variant="secondary" type="button" onClick={() => navigate("/perfil")}>
+            Perfil
+          </Button>
           {showLogout ? (
             <Button variant="danger" type="button" className="app-header__logout" onClick={handleLogout}>
               Deslogar

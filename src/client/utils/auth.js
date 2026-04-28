@@ -4,8 +4,15 @@ export function getAuthToken() {
 export function isAuthenticated() {
     return Boolean(getAuthToken());
 }
+export function isProfileComplete() {
+    const user = getAuthUser();
+    return Boolean(user?.fullName?.trim() && user?.jobTitle?.trim());
+}
 export function saveAuthSession(user, token) {
     localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(user));
+}
+export function saveAuthUser(user) {
     localStorage.setItem("user", JSON.stringify(user));
 }
 export function getAuthUser() {
