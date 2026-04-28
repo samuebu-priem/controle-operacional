@@ -33,6 +33,10 @@ body,
   min-height: 100%;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   background:
@@ -48,6 +52,7 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
+  overflow-x: hidden;
 }
 
 button,
@@ -55,6 +60,7 @@ input,
 textarea,
 select {
   font: inherit;
+  font-size: 16px;
 }
 
 a {
@@ -74,7 +80,7 @@ img {
   width: 100%;
   max-width: var(--content-width);
   margin: 0 auto;
-  padding: 24px;
+  padding: 24px max(24px, env(safe-area-inset-right)) 24px max(24px, env(safe-area-inset-left));
 }
 
 .app-layout {
@@ -121,6 +127,7 @@ img {
   cursor: pointer;
   transition: 0.2s;
   text-decoration: none;
+  scroll-snap-align: start;
 }
 
 .nav-item:hover {
@@ -830,6 +837,12 @@ img {
   position: relative;
   display: grid;
   place-items: center;
+  max-width: 100%;
+}
+
+.quality-donut svg {
+  width: min(220px, 100%);
+  height: auto;
 }
 
 .quality-donut__center {
@@ -898,8 +911,14 @@ img {
 }
 
 @media (max-width: 768px) {
+  :root {
+    --gap: 16px;
+    --radius: 12px;
+    --input-height: 46px;
+  }
+
   .app-shell__main {
-    padding: 18px 14px 28px;
+    padding: 16px max(14px, env(safe-area-inset-right)) 28px max(14px, env(safe-area-inset-left));
   }
 
   .app-nav {
@@ -907,6 +926,9 @@ img {
     padding: 0 14px 18px;
     overflow-x: auto;
     flex-wrap: nowrap;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
   }
 
   .nav-item {
@@ -916,10 +938,40 @@ img {
   .app-header__content {
     padding: 22px 14px 18px;
     flex-direction: column;
+    gap: 18px;
+  }
+
+  .app-header__text,
+  .app-header__actions {
+    width: 100%;
+  }
+
+  .app-header__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .page-header {
     flex-direction: column;
+  }
+
+  .app-header__title {
+    font-size: clamp(1.7rem, 9vw, 2.2rem);
+  }
+
+  .app-header__subtitle {
+    font-size: 0.96rem;
+  }
+
+  .card,
+  .page-card,
+  .section-card {
+    padding: 16px;
+  }
+
+  .auth-card {
+    padding: 22px 18px;
   }
 
   .form-grid--two,
@@ -943,6 +995,15 @@ img {
     width: 100%;
   }
 
+  .home-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .home-actions .button {
+    min-width: 0;
+  }
+
   .quality-toolbar {
     flex-direction: column;
     align-items: stretch;
@@ -955,10 +1016,61 @@ img {
   }
 
   .quality-card {
-    padding: 20px;
+    padding: 16px;
+  }
+
+  .quality-kpi {
+    padding: 15px;
+  }
+
+  .quality-kpi strong {
+    font-size: 1.45rem;
+    overflow-wrap: anywhere;
+  }
+
+  .quality-legend__item {
+    grid-template-columns: 12px minmax(0, 1fr);
+  }
+
+  .quality-legend__item strong {
+    grid-column: 2;
+    color: var(--muted);
+  }
+
+  .quality-ranking__item {
+    padding: 14px;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+    padding: 16px;
   }
 
   .button {
     width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-header__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .app-nav {
+    margin-top: 10px;
+  }
+
+  .section-head {
+    flex-direction: column;
+  }
+
+  .photo-upload__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
