@@ -300,8 +300,8 @@ img {
 
 .input-field__label {
   color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 800;
 }
 
 .input-field__help,
