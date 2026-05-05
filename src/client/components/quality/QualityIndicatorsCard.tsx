@@ -1,7 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import type { Inspecao } from "../../../shared/types";
 import Card from "../ui/Card";
-import Button from "../ui/Button";
 
 type PeriodOption = "THIS_MONTH" | "LAST_30_DAYS" | "LAST_90_DAYS" | "CUSTOM";
 
@@ -10,6 +9,19 @@ type IndicatorItem = {
   count: number;
   percentage: number;
   color: string;
+};
+
+type SeverityItem = {
+  label: string;
+  count: number;
+  percentage: number;
+};
+
+type TrendItem = {
+  label: string;
+  total: number;
+  withCriticalPoints: number;
+  rate: number;
 };
 
 type QualityIndicatorsCardProps = {
@@ -24,6 +36,12 @@ const PERIOD_LABELS: Record<PeriodOption, string> = {
 };
 
 const PALETTE = ["#22c55e", "#38bdf8", "#a78bfa", "#f59e0b", "#ef4444"];
+const SEVERITY_ORDER = ["LEVE", "MEDIA", "GRAVE"] as const;
+const SEVERITY_WEIGHT: Record<(typeof SEVERITY_ORDER)[number], number> = {
+  LEVE: 1,
+  MEDIA: 2,
+  GRAVE: 3
+};
 
 function startOfDay(date: Date) {
   const copy = new Date(date);
@@ -65,17 +83,86 @@ function getPeriodRange(option: PeriodOption, customStart?: string, customEnd?: 
 }
 
 function normalizeLabel(value: string) {
-  return value.trim();
+  const trimmed = value.trim();
+  const key = trimmed
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (key.includes("ferrugem")) return "Ferrugem";
+  if (key.includes("resquicio")) return "Resquicio de produto";
+  if (key.includes("fuligem") || key.includes("fulligem")) return "Fuligem";
+  if (key.includes("amarelamento")) return "Amarelamento";
+  if (key.includes("mancha")) return "Mancha";
+
+  return trimmed;
 }
 
-function buildTopIssues(inspecoes: Inspecao[]) {
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(date: Date) {
+  return date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+}
+
+function buildTrend(inspecoes: Inspecao[]) {
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    return {
+      key: monthKey(date),
+      label: monthLabel(date),
+      total: 0,
+      withCriticalPoints: 0,
+      rate: 0
+    };
+  });
+  const byMonth = new Map(months.map((item) => [item.key, item]));
+
+  inspecoes.forEach((inspecao) => {
+    const date = new Date(inspecao.dataInspecao);
+    const item = byMonth.get(monthKey(date));
+    if (!item) return;
+    item.total += 1;
+    if (inspecao.pontosCriticos.length > 0) item.withCriticalPoints += 1;
+  });
+
+  return months.map((item) => ({
+    ...item,
+    rate: item.total > 0 ? (item.withCriticalPoints / item.total) * 100 : 0
+  }));
+}
+
+function buildCategoryOptions(inspecoes: Inspecao[]) {
+  const labels = new Set<string>();
+
+  inspecoes.forEach((inspecao) => {
+    inspecao.pontosCriticos.forEach((ponto) => {
+      const label = normalizeLabel(ponto.categoria);
+      if (label) labels.add(label);
+    });
+  });
+
+  return [...labels].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+function buildQualityAnalytics(inspecoes: Inspecao[], selectedCategory: string) {
   const frequency = new Map<string, number>();
+  const severityFrequency = new Map<string, number>(SEVERITY_ORDER.map((severity) => [severity, 0]));
+  let totalCriticalPoints = 0;
+  let severityPenalty = 0;
 
   inspecoes.forEach((inspecao) => {
     inspecao.pontosCriticos.forEach((ponto) => {
       const label = normalizeLabel(ponto.categoria);
       if (!label) return;
+      if (selectedCategory !== "ALL" && label !== selectedCategory) return;
+
       frequency.set(label, (frequency.get(label) ?? 0) + 1);
+      severityFrequency.set(ponto.severidade, (severityFrequency.get(ponto.severidade) ?? 0) + 1);
+      severityPenalty += SEVERITY_WEIGHT[ponto.severidade] ?? 1;
+      totalCriticalPoints += 1;
     });
   });
 
@@ -100,7 +187,25 @@ function buildTopIssues(inspecoes: Inspecao[]) {
     });
   }
 
-  return { items, total };
+  const severityItems = SEVERITY_ORDER.map((severity) => {
+    const count = severityFrequency.get(severity) ?? 0;
+    return {
+      label: severity,
+      count,
+      percentage: totalCriticalPoints > 0 ? (count / totalCriticalPoints) * 100 : 0
+    };
+  });
+  const withCriticalPoints = inspecoes.filter((inspecao) =>
+    inspecao.pontosCriticos.some((ponto) => {
+      const label = normalizeLabel(ponto.categoria);
+      return selectedCategory === "ALL" || label === selectedCategory;
+    })
+  ).length;
+  const maxPenalty = Math.max(inspecoes.length * SEVERITY_WEIGHT.GRAVE, 1);
+  const score = Math.max(0, Math.round((1 - Math.min(severityPenalty / maxPenalty, 1)) * 100));
+  const complianceRate = inspecoes.length > 0 ? Math.round(((inspecoes.length - withCriticalPoints) / inspecoes.length) * 100) : 0;
+
+  return { items, total, severityItems, withCriticalPoints, score, complianceRate };
 }
 
 function filterByPeriod(inspecoes: Inspecao[], option: PeriodOption, customStart: string, customEnd: string) {
@@ -162,29 +267,18 @@ function DonutChart({ items }: { items: IndicatorItem[] }) {
 
 export default function QualityIndicatorsCard({ inspecoes }: QualityIndicatorsCardProps) {
   const [period, setPeriod] = useState<PeriodOption>("THIS_MONTH");
+  const [category, setCategory] = useState("ALL");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [appliedPeriod, setAppliedPeriod] = useState<PeriodOption>("THIS_MONTH");
-  const [appliedCustomStart, setAppliedCustomStart] = useState("");
-  const [appliedCustomEnd, setAppliedCustomEnd] = useState("");
-
-  const filteredInspecoes = useMemo(() => {
-    return filterByPeriod(inspecoes, appliedPeriod, appliedCustomStart, appliedCustomEnd);
-  }, [inspecoes, appliedPeriod, appliedCustomStart, appliedCustomEnd]);
+  const filteredInspecoes = useMemo(() => filterByPeriod(inspecoes, period, customStart, customEnd), [inspecoes, period, customStart, customEnd]);
+  const categoryOptions = useMemo(() => buildCategoryOptions(filteredInspecoes), [filteredInspecoes]);
 
   const totalInspecoes = filteredInspecoes.length;
-  const withCriticalPoints = filteredInspecoes.filter((inspecao) => inspecao.pontosCriticos.length > 0).length;
-  const topIssues = useMemo(() => buildTopIssues(filteredInspecoes), [filteredInspecoes]);
+  const topIssues = useMemo(() => buildQualityAnalytics(filteredInspecoes, category), [filteredInspecoes, category]);
+  const trend = useMemo(() => buildTrend(inspecoes), [inspecoes]);
   const leadingIssue = topIssues.items[0]?.label ?? "—";
 
-  const canApplyCustom = period !== "CUSTOM" || (customStart.length > 0 && customEnd.length > 0);
-
-  function handleApply() {
-    if (!canApplyCustom) return;
-    setAppliedPeriod(period);
-    setAppliedCustomStart(customStart);
-    setAppliedCustomEnd(customEnd);
-  }
+  const maxTrendRate = Math.max(...trend.map((item) => item.rate), 1);
 
   return (
     <section className="quality-section">
@@ -234,9 +328,21 @@ export default function QualityIndicatorsCard({ inspecoes }: QualityIndicatorsCa
             </div>
           ) : null}
 
-          <Button type="button" onClick={handleApply}>
-            Aplicar
-          </Button>
+          <label className="input-field quality-select">
+            <span className="input-field__label">Categoria</span>
+            <select
+              className="select"
+              value={category}
+              onChange={(event: ChangeEvent<HTMLSelectElement>) => setCategory(event.target.value)}
+            >
+              <option value="ALL">Todas</option>
+              {categoryOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="quality-kpis">
@@ -246,7 +352,15 @@ export default function QualityIndicatorsCard({ inspecoes }: QualityIndicatorsCa
           </article>
           <article className="quality-kpi">
             <span>Com ponto crítico</span>
-            <strong>{withCriticalPoints}</strong>
+            <strong>{topIssues.withCriticalPoints}</strong>
+          </article>
+          <article className="quality-kpi">
+            <span>Conformidade</span>
+            <strong>{topIssues.complianceRate}%</strong>
+          </article>
+          <article className="quality-kpi">
+            <span>Nota qualidade</span>
+            <strong>{topIssues.score}</strong>
           </article>
           <article className="quality-kpi">
             <span>Recorrência líder</span>
@@ -284,6 +398,39 @@ export default function QualityIndicatorsCard({ inspecoes }: QualityIndicatorsCa
                   </div>
                 </div>
               ))}
+              {topIssues.items.length === 0 ? <p className="helper">Nenhum item para listar.</p> : null}
+            </div>
+          </div>
+
+          <div className="quality-insights">
+            <div className="quality-insight-panel">
+              <h3 className="section-title">Severidade</h3>
+              <div className="quality-bars">
+                {topIssues.severityItems.map((item) => (
+                  <div key={item.label} className="quality-bar-row">
+                    <span>{item.label}</span>
+                    <div className="quality-bar-track">
+                      <span style={{ width: `${Math.max(item.percentage, item.count > 0 ? 8 : 0)}%` }} />
+                    </div>
+                    <strong>{item.count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="quality-insight-panel">
+              <h3 className="section-title">Ultimos 6 meses</h3>
+              <div className="quality-trend">
+                {trend.map((item: TrendItem) => (
+                  <div key={item.label} className="quality-trend__item">
+                    <div className="quality-trend__bar">
+                      <span style={{ height: `${Math.max((item.rate / maxTrendRate) * 100, item.rate > 0 ? 8 : 0)}%` }} />
+                    </div>
+                    <strong>{Math.round(item.rate)}%</strong>
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

@@ -22,6 +22,7 @@ type CriticalPointFormProps = {
 };
 
 const severidades: Severidade[] = ["LEVE", "MEDIA", "GRAVE"];
+const categoriasPontoCritico = ["Ferrugem", "Resquicio de produto", "Fuligem", "Amarelamento", "Mancha"];
 
 export default function CriticalPointForm({
   pontosCriticos,
@@ -39,7 +40,21 @@ export default function CriticalPointForm({
 
       {pontosCriticos.map((ponto, index) => (
         <article key={index} className="critical-point-form__item">
-          <Input label="Categoria" value={ponto.categoria} onChange={(e) => onUpdate(index, "categoria", e.target.value)} />
+          <label className="input-field">
+            <span className="input-field__label">Categoria</span>
+            <select
+              className="input"
+              value={ponto.categoria}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => onUpdate(index, "categoria", e.target.value)}
+            >
+              <option value="">Selecione</option>
+              {categoriasPontoCritico.map((categoria) => (
+                <option key={categoria} value={categoria}>
+                  {categoria}
+                </option>
+              ))}
+            </select>
+          </label>
           <Input label="Localização" value={ponto.localizacao} onChange={(e) => onUpdate(index, "localizacao", e.target.value)} />
           <Textarea
             label="Descrição"
