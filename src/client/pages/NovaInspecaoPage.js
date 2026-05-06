@@ -11,11 +11,11 @@ import { getAuthUser } from "../utils/auth";
 
 const CHECKLIST_BASE = [
   { id: "boca-visita", label: "Boca de visita e tampa", localizacao: "Boca de visita", categoria: "Mancha" },
-  { id: "valvulas", label: "Valvulas e conexoes", localizacao: "Valvulas", categoria: "Resquicio de produto" },
+  { id: "valvulas", label: "Valvulas e drenos", localizacao: "Valvulas e drenos", categoria: "Resquicio de produto" },
   { id: "interior", label: "Interior do tanque", localizacao: "Parte interna", categoria: "Resquicio de produto" },
-  { id: "exterior", label: "Exterior do tanque", localizacao: "Parte externa", categoria: "Ferrugem" },
-  { id: "soldas", label: "Soldas e juntas", localizacao: "Soldas", categoria: "Ferrugem" },
-  { id: "fundo", label: "Fundo e escoamento", localizacao: "Fundo do tanque", categoria: "Mancha" },
+  { id: "quebra-ondas", label: "Quebra ondas", localizacao: "Quebra ondas", categoria: "Ferrugem" },
+  { id: "soldas", label: "Soldas", localizacao: "Soldas", categoria: "Ferrugem" },
+  { id: "fundo", label: "Fundo e chapa", localizacao: "Fundo e chapa", categoria: "Mancha" },
   { id: "odor", label: "Odor ou residuo aparente", localizacao: "Geral", categoria: "Resquicio de produto" }
 ];
 
@@ -227,7 +227,7 @@ export default function NovaInspecaoPage() {
                 _jsxs(
                   "article",
                   {
-                    className: `inspection-checklist__item ${item.status === "ATENCAO" ? "inspection-checklist__item--attention" : ""}`,
+                    className: `inspection-checklist__item ${item.status === "OK" ? "inspection-checklist__item--ok" : ""} ${item.status === "ATENCAO" ? "inspection-checklist__item--attention" : ""}`.trim(),
                     children: [
                       _jsxs("div", {
                         className: "inspection-checklist__top",

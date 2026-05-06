@@ -1,6 +1,8 @@
 import { jsx, jsxs } from "react/jsx-runtime";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Card from "../ui/Card";
+import Button from "../ui/Button";
 const PERIOD_LABELS = {
   THIS_MONTH: "Este m\xEAs",
   LAST_30_DAYS: "\xDAltimos 30 dias",
@@ -83,14 +85,16 @@ function buildQualityAnalytics(inspecoes, selectedCategory) {
     label,
     count,
     percentage: total > 0 ? count / total * 100 : 0,
-    color: PALETTE[index % PALETTE.length]
+    color: PALETTE[index % PALETTE.length],
+    labels: [label]
   }));
   if (others > 0) {
     items.push({
       label: "Outros",
       count: others,
       percentage: total > 0 ? others / total * 100 : 0,
-      color: "#64748b"
+      color: "#64748b",
+      labels: sorted.slice(5).map(([label]) => label)
     });
   }
   const severityItems = SEVERITY_ORDER.map((severity) => {
@@ -108,6 +112,36 @@ function buildQualityAnalytics(inspecoes, selectedCategory) {
     })
   ).length;
   return { items, total, severityItems, withCriticalPoints };
+}
+function buildIssueFleets(inspecoes, selectedIssue) {
+  if (!selectedIssue) return [];
+  const labels = new Set(selectedIssue.labels ?? [selectedIssue.label]);
+  const fleets = /* @__PURE__ */ new Map();
+  inspecoes.forEach((inspecao) => {
+    const matchingPoints = (inspecao.pontosCriticos ?? []).filter((ponto) => labels.has(normalizeLabel(ponto.categoria)));
+    if (matchingPoints.length === 0) return;
+    const frota = inspecao.frota;
+    const key = frota?.id ?? inspecao.frotaId ?? frota?.numeroFrota ?? "sem-frota";
+    const current = fleets.get(key) ?? {
+      id: frota?.id ?? inspecao.frotaId ?? "",
+      numeroFrota: frota?.numeroFrota ?? inspecao.frotaId ?? "Nao informada",
+      placa: frota?.placa ?? "Nao informada",
+      tipoEquipamento: frota?.tipoEquipamento ?? "Nao informado",
+      ocorrencias: 0,
+      inspecoes: 0,
+      ultimaInspecao: inspecao.dataInspecao
+    };
+    current.ocorrencias += matchingPoints.length;
+    current.inspecoes += 1;
+    if (new Date(inspecao.dataInspecao) > new Date(current.ultimaInspecao)) {
+      current.ultimaInspecao = inspecao.dataInspecao;
+    }
+    fleets.set(key, current);
+  });
+  return [...fleets.values()].sort((a, b) => b.ocorrencias - a.ocorrencias || a.numeroFrota.localeCompare(b.numeroFrota, "pt-BR"));
+}
+function formatDate(value) {
+  return new Date(value).toLocaleDateString("pt-BR");
 }
 function filterByPeriod(inspecoes, option, customStart, customEnd) {
   const range = getPeriodRange(option, customStart, customEnd);
@@ -165,8 +199,10 @@ function DonutChart({ items }) {
   ] });
 }
 function QualityIndicatorsCard({ inspecoes }) {
+  const navigate = useNavigate();
   const [period, setPeriod] = useState("THIS_MONTH");
   const [category, setCategory] = useState("ALL");
+  const [selectedIssueLabel, setSelectedIssueLabel] = useState("");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const filteredInspecoes = useMemo(() => filterByPeriod(inspecoes, period, customStart, customEnd), [inspecoes, period, customStart, customEnd]);
@@ -174,6 +210,8 @@ function QualityIndicatorsCard({ inspecoes }) {
   const totalInspecoes = filteredInspecoes.length;
   const topIssues = useMemo(() => buildQualityAnalytics(filteredInspecoes, category), [filteredInspecoes, category]);
   const leadingIssue = topIssues.items[0]?.label ?? "\u2014";
+  const selectedIssue = topIssues.items.find((item) => item.label === selectedIssueLabel) ?? null;
+  const selectedIssueFleets = useMemo(() => buildIssueFleets(filteredInspecoes, selectedIssue), [filteredInspecoes, selectedIssue]);
   return /* @__PURE__ */ jsxs("section", { className: "quality-section", children: [
     /* @__PURE__ */ jsx("div", { className: "section-head quality-section__head", children: /* @__PURE__ */ jsxs("div", { children: [
       /* @__PURE__ */ jsx("p", { className: "card-label", children: "Indicadores de Qualidade" }),
@@ -281,11 +319,30 @@ function QualityIndicatorsCard({ inspecoes }) {
                   Math.round(item.percentage),
                   "%"
                 ] })
-              ] })
+              ] }),
+              /* @__PURE__ */ jsx(Button, { type: "button", variant: selectedIssueLabel === item.label ? "secondary" : "ghost", onClick: () => setSelectedIssueLabel((current) => current === item.label ? "" : item.label), children: selectedIssueLabel === item.label ? "Fechar" : "Abrir" })
             ] }, item.label)),
             topIssues.items.length === 0 ? /* @__PURE__ */ jsx("p", { className: "helper", children: "Nenhum item para listar." }) : null
           ] })
         ] }),
+        selectedIssue ? /* @__PURE__ */ jsxs("div", { className: "quality-recurrence-panel", style: { "--issue-color": selectedIssue.color }, children: [
+          /* @__PURE__ */ jsxs("div", { className: "section-head", children: [
+            /* @__PURE__ */ jsxs("div", { children: [
+              /* @__PURE__ */ jsx("p", { className: "card-label", children: "Frotas com recorrencia" }),
+              /* @__PURE__ */ jsx("h3", { className: "section-title", children: selectedIssue.label })
+            ] }),
+            /* @__PURE__ */ jsx("span", { className: "status", children: `${selectedIssueFleets.length} frotas` })
+          ] }),
+          /* @__PURE__ */ jsx("div", { className: "quality-recurrence-list", children: selectedIssueFleets.map((frota) => /* @__PURE__ */ jsxs("article", { className: "quality-recurrence-fleet", children: [
+            /* @__PURE__ */ jsxs("div", { children: [
+              /* @__PURE__ */ jsxs("strong", { children: ["Frota ", frota.numeroFrota] }),
+              /* @__PURE__ */ jsxs("p", { className: "helper", children: ["Placa: ", frota.placa, " | ", frota.tipoEquipamento] }),
+              /* @__PURE__ */ jsxs("p", { className: "helper", children: [frota.ocorrencias, " ocorrencias em ", frota.inspecoes, " inspecoes | Ultima: ", formatDate(frota.ultimaInspecao)] })
+            ] }),
+            /* @__PURE__ */ jsx(Button, { type: "button", variant: "secondary", disabled: !frota.id, onClick: () => navigate(`/frotas/${frota.id}/historico`), children: "Abrir historico" })
+          ] }, frota.id || frota.numeroFrota)) }),
+          selectedIssueFleets.length === 0 ? /* @__PURE__ */ jsx("p", { className: "helper", children: "Nenhuma frota encontrada para esta recorrencia." }) : null
+        ] }) : null,
         /* @__PURE__ */ jsxs("div", { className: "quality-insights", children: [
           /* @__PURE__ */ jsxs("div", { className: "quality-insight-panel", children: [
             /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Severidade" }),
