@@ -9,11 +9,6 @@ const PERIOD_LABELS = {
 };
 const PALETTE = ["#22c55e", "#38bdf8", "#a78bfa", "#f59e0b", "#ef4444"];
 const SEVERITY_ORDER = ["LEVE", "MEDIA", "GRAVE"];
-const SEVERITY_WEIGHT = {
-  LEVE: 1,
-  MEDIA: 2,
-  GRAVE: 3
-};
 function startOfDay(date) {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
@@ -56,37 +51,6 @@ function normalizeLabel(value) {
   if (key.includes("mancha")) return "Mancha";
   return trimmed;
 }
-function monthKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-function monthLabel(date) {
-  return date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-}
-function buildTrend(inspecoes) {
-  const now = /* @__PURE__ */ new Date();
-  const months = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-    return {
-      key: monthKey(date),
-      label: monthLabel(date),
-      total: 0,
-      withCriticalPoints: 0,
-      rate: 0
-    };
-  });
-  const byMonth = new Map(months.map((item) => [item.key, item]));
-  inspecoes.forEach((inspecao) => {
-    const date = new Date(inspecao.dataInspecao);
-    const item = byMonth.get(monthKey(date));
-    if (!item) return;
-    item.total += 1;
-    if (inspecao.pontosCriticos.length > 0) item.withCriticalPoints += 1;
-  });
-  return months.map((item) => ({
-    ...item,
-    rate: item.total > 0 ? item.withCriticalPoints / item.total * 100 : 0
-  }));
-}
 function buildCategoryOptions(inspecoes) {
   const labels = /* @__PURE__ */ new Set();
   inspecoes.forEach((inspecao) => {
@@ -101,7 +65,6 @@ function buildQualityAnalytics(inspecoes, selectedCategory) {
   const frequency = /* @__PURE__ */ new Map();
   const severityFrequency = new Map(SEVERITY_ORDER.map((severity) => [severity, 0]));
   let totalCriticalPoints = 0;
-  let severityPenalty = 0;
   inspecoes.forEach((inspecao) => {
     inspecao.pontosCriticos.forEach((ponto) => {
       const label = normalizeLabel(ponto.categoria);
@@ -109,7 +72,6 @@ function buildQualityAnalytics(inspecoes, selectedCategory) {
       if (selectedCategory !== "ALL" && label !== selectedCategory) return;
       frequency.set(label, (frequency.get(label) ?? 0) + 1);
       severityFrequency.set(ponto.severidade, (severityFrequency.get(ponto.severidade) ?? 0) + 1);
-      severityPenalty += SEVERITY_WEIGHT[ponto.severidade] ?? 1;
       totalCriticalPoints += 1;
     });
   });
@@ -145,10 +107,7 @@ function buildQualityAnalytics(inspecoes, selectedCategory) {
       return selectedCategory === "ALL" || label === selectedCategory;
     })
   ).length;
-  const maxPenalty = Math.max(inspecoes.length * SEVERITY_WEIGHT.GRAVE, 1);
-  const score = Math.max(0, Math.round((1 - Math.min(severityPenalty / maxPenalty, 1)) * 100));
-  const complianceRate = inspecoes.length > 0 ? Math.round((inspecoes.length - withCriticalPoints) / inspecoes.length * 100) : 0;
-  return { items, total, severityItems, withCriticalPoints, score, complianceRate };
+  return { items, total, severityItems, withCriticalPoints };
 }
 function filterByPeriod(inspecoes, option, customStart, customEnd) {
   const range = getPeriodRange(option, customStart, customEnd);
@@ -214,9 +173,7 @@ function QualityIndicatorsCard({ inspecoes }) {
   const categoryOptions = useMemo(() => buildCategoryOptions(filteredInspecoes), [filteredInspecoes]);
   const totalInspecoes = filteredInspecoes.length;
   const topIssues = useMemo(() => buildQualityAnalytics(filteredInspecoes, category), [filteredInspecoes, category]);
-  const trend = useMemo(() => buildTrend(inspecoes), [inspecoes]);
   const leadingIssue = topIssues.items[0]?.label ?? "\u2014";
-  const maxTrendRate = Math.max(...trend.map((item) => item.rate), 1);
   return /* @__PURE__ */ jsxs("section", { className: "quality-section", children: [
     /* @__PURE__ */ jsx("div", { className: "section-head quality-section__head", children: /* @__PURE__ */ jsxs("div", { children: [
       /* @__PURE__ */ jsx("p", { className: "card-label", children: "Indicadores de Qualidade" }),
@@ -293,17 +250,6 @@ function QualityIndicatorsCard({ inspecoes }) {
           /* @__PURE__ */ jsx("strong", { children: topIssues.withCriticalPoints })
         ] }),
         /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
-          /* @__PURE__ */ jsx("span", { children: "Conformidade" }),
-          /* @__PURE__ */ jsxs("strong", { children: [
-            topIssues.complianceRate,
-            "%"
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
-          /* @__PURE__ */ jsx("span", { children: "Nota qualidade" }),
-          /* @__PURE__ */ jsx("strong", { children: topIssues.score })
-        ] }),
-        /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
           /* @__PURE__ */ jsx("span", { children: "Recorr\xEAncia l\xEDder" }),
           /* @__PURE__ */ jsx("strong", { children: leadingIssue })
         ] })
@@ -325,7 +271,7 @@ function QualityIndicatorsCard({ inspecoes }) {
         /* @__PURE__ */ jsxs("div", { className: "quality-ranking", children: [
           /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Top recorr\xEAncias" }),
           /* @__PURE__ */ jsxs("div", { className: "quality-ranking__list", children: [
-            topIssues.items.map((item, index) => /* @__PURE__ */ jsxs("div", { className: "quality-ranking__item", children: [
+            topIssues.items.map((item, index) => /* @__PURE__ */ jsxs("div", { className: "quality-ranking__item", style: { "--issue-color": item.color }, children: [
               /* @__PURE__ */ jsx("span", { className: "quality-ranking__position", children: index + 1 }),
               /* @__PURE__ */ jsxs("div", { children: [
                 /* @__PURE__ */ jsx("strong", { children: item.label }),
@@ -349,17 +295,6 @@ function QualityIndicatorsCard({ inspecoes }) {
               /* @__PURE__ */ jsx("strong", { children: item.count })
             ] }, item.label)) })
           ] }),
-          /* @__PURE__ */ jsxs("div", { className: "quality-insight-panel", children: [
-            /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Ultimos 6 meses" }),
-            /* @__PURE__ */ jsx("div", { className: "quality-trend", children: trend.map((item) => /* @__PURE__ */ jsxs("div", { className: "quality-trend__item", children: [
-              /* @__PURE__ */ jsx("div", { className: "quality-trend__bar", children: /* @__PURE__ */ jsx("span", { style: { height: `${Math.max(item.rate / maxTrendRate * 100, item.rate > 0 ? 8 : 0)}%` } }) }),
-              /* @__PURE__ */ jsxs("strong", { children: [
-                Math.round(item.rate),
-                "%"
-              ] }),
-              /* @__PURE__ */ jsx("span", { children: item.label })
-            ] }, item.label)) })
-          ] })
         ] })
       ] })
     ] })
