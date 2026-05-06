@@ -795,6 +795,127 @@ img {
   overflow-wrap: anywhere;
 }
 
+.inspection-checklist {
+  display: grid;
+  gap: 14px;
+}
+
+.inspection-checklist__item {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: var(--radius);
+  background: rgba(5, 10, 20, 0.62);
+}
+
+.inspection-checklist__item--attention {
+  border-color: rgba(239, 68, 68, 0.34);
+  background:
+    linear-gradient(90deg, rgba(239, 68, 68, 0.12), transparent 46%),
+    rgba(5, 10, 20, 0.62);
+}
+
+.inspection-checklist__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.inspection-checklist__toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.inspection-checklist__details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.inspection-checklist__details .input-field:has(textarea) {
+  grid-column: 1 / -1;
+}
+
+.frota-history-page {
+  gap: 22px;
+}
+
+.frota-history-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.frota-history-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.frota-history-kpis article {
+  display: grid;
+  gap: 6px;
+  padding: 15px;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: var(--radius);
+  background: rgba(5, 10, 20, 0.62);
+}
+
+.frota-history-kpis span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.frota-history-kpis strong {
+  color: #e8fbff;
+  font-size: 1.35rem;
+}
+
+.frota-history-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 18px;
+}
+
+.frota-history-ranking {
+  display: grid;
+  gap: 10px;
+}
+
+.frota-history-ranking__item {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: var(--radius);
+  background: rgba(5, 10, 20, 0.62);
+}
+
+.frota-history-ranking__item span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: #b9ecff;
+  font-weight: 800;
+}
+
+.frota-history-ranking__item small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .fade-in {
   animation: fade-in 180ms ease-out;
 }
@@ -1103,14 +1224,18 @@ img {
   .quality-kpis,
   .quality-custom-dates,
   .quality-insights,
-  .critical-point-form__item {
+  .critical-point-form__item,
+  .inspection-checklist__details,
+  .frota-history-grid {
     grid-template-columns: 1fr;
   }
 
   .frota-card__top,
   .history-item__top,
   .summary-row,
-  .summary-box__top {
+  .summary-box__top,
+  .inspection-checklist__top,
+  .frota-history-hero {
     flex-direction: column;
   }
 

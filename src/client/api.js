@@ -34,7 +34,7 @@ export async function searchFrotas(query) {
     return request(`/api/frotas/search?query=${encodeURIComponent(query)}`);
 }
 export async function getFrotaHistorico(id) {
-    return request(`/api/frotas/${id}/historico`);
+    return request(`/api/inspecoes/frotas/${id}/historico`);
 }
 export async function getFrotaByNumero(numeroFrota) {
     return request(`/api/frotas/numero/${encodeURIComponent(numeroFrota)}/historico`);
