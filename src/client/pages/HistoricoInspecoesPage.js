@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { deleteInspecao, getInspecaoById, listInspecoes } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
@@ -43,8 +43,10 @@ function hasPhotos(inspecao) {
 }
 export default function HistoricoInspecoesPage() {
     const navigate = useNavigate();
-    const [searchInput, setSearchInput] = useState("");
-    const [searchQuery, setSearchQuery] = useState("");
+    const [searchParams] = useSearchParams();
+    const initialFrotaSearch = searchParams.get("frota") ?? "";
+    const [searchInput, setSearchInput] = useState(initialFrotaSearch);
+    const [searchQuery, setSearchQuery] = useState(initialFrotaSearch);
     const [showCritical, setShowCritical] = useState(false);
     const [showWithoutCritical, setShowWithoutCritical] = useState(false);
     const [showWithPhotos, setShowWithPhotos] = useState(false);
