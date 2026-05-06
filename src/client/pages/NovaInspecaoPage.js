@@ -25,7 +25,7 @@ const SEVERIDADES = ["LEVE", "MEDIA", "GRAVE"];
 function createChecklistState() {
   return CHECKLIST_BASE.map((item) => ({
     ...item,
-    status: "OK",
+    status: "PENDENTE",
     severidade: "LEVE",
     descricao: "",
     procedimentoRecomendado: ""
@@ -34,8 +34,10 @@ function createChecklistState() {
 
 function buildChecklistObservacao(checklist) {
   const attentionItems = checklist.filter((item) => item.status === "ATENCAO");
-  if (attentionItems.length === 0) return "Checklist fixo: todos os itens verificados sem apontamento.";
-  return `Checklist fixo com atencao em: ${attentionItems.map((item) => item.label).join(", ")}.`;
+  const okItems = checklist.filter((item) => item.status === "OK");
+  const pendingItems = checklist.filter((item) => item.status === "PENDENTE");
+  if (attentionItems.length === 0) return `Checklist fixo: ${okItems.length} itens OK e ${pendingItems.length} pendentes, sem apontamento.`;
+  return `Checklist fixo: ${okItems.length} itens OK, ${attentionItems.length} com atencao, ${pendingItems.length} pendentes. Atencao em: ${attentionItems.map((item) => item.label).join(", ")}.`;
 }
 
 function checklistToCriticalPoints(checklist) {
