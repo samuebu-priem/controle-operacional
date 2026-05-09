@@ -158,57 +158,63 @@ function columnName(index) {
   }
   return name;
 }
+function buildSingleSheetRows(sections) {
+  const rows = [];
+  sections.forEach((section, sectionIndex) => {
+    if (sectionIndex > 0) rows.push({ type: "blank", cells: [] });
+    rows.push({ type: "section", cells: [section.title] });
+    if (section.subtitle) rows.push({ type: "subtitle", cells: [section.subtitle] });
+    rows.push({ type: "header", cells: section.headers });
+    const bodyRows = section.rows.length > 0 ? section.rows : [["Sem dados para este filtro."]];
+    bodyRows.forEach((row) => rows.push({ type: "data", cells: row }));
+  });
+  return rows;
+}
 function worksheetXml(sheet) {
-  const { title, subtitle, headers, rows } = sheet;
-  const bodyRows = rows.length > 0 ? rows : [["Sem dados para este filtro."]];
-  const headerRowIndex = 4;
-  const allRows = [[title], [subtitle], [], headers, ...bodyRows];
-  const cols = headers
-    .map((header, index) => {
+  const { sections } = sheet;
+  const allRows = buildSingleSheetRows(sections);
+  const maxColumns = Math.max(...sections.map((section) => section.headers.length));
+  const cols = Array.from({ length: maxColumns }, (_, index) => {
+      const values = allRows.map((row) => row.cells[index] ?? "");
       const width = Math.min(
-      48,
-      Math.max(
-        String(header).length + 2,
-        ...bodyRows.map((row) => String(row[index] ?? "").length + 2)
-      )
+        52,
+        Math.max(12, ...values.map((value) => String(value).length + 2))
       );
       return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`;
     })
     .join("");
   const sheetRows = allRows
     .map((row, rowIndex) => {
-      const cells = headers
-        .map((_, colIndex) => {
-          const value = row[colIndex] ?? "";
+      const cells = Array.from({ length: maxColumns }, (_, colIndex) => {
           const ref = `${columnName(colIndex)}${rowIndex + 1}`;
-          const style = rowIndex === 0 ? ' s="2"' : rowIndex === 1 ? ' s="3"' : rowIndex === headerRowIndex - 1 ? ' s="1"' : "";
+          const style = row.type === "section" ? ' s="2"' : row.type === "subtitle" ? ' s="3"' : row.type === "header" ? ' s="1"' : row.type === "blank" ? ' s="4"' : "";
+          const value = row.cells[colIndex] ?? "";
           if (typeof value === "number") {
             return `<c r="${ref}"${style}><v>${value}</v></c>`;
           }
           return `<c r="${ref}" t="inlineStr"${style}><is><t>${escapeHtml(value)}</t></is></c>`;
         })
         .join("");
-      const height = rowIndex === 0 ? ' ht="26" customHeight="1"' : rowIndex === 1 ? ' ht="20" customHeight="1"' : rowIndex === headerRowIndex - 1 ? ' ht="24" customHeight="1"' : "";
+      const height = row.type === "section" ? ' ht="26" customHeight="1"' : row.type === "subtitle" ? ' ht="20" customHeight="1"' : row.type === "header" ? ' ht="24" customHeight="1"' : "";
       return `<row r="${rowIndex + 1}"${height}>${cells}</row>`;
     })
     .join("");
-  const lastRef = `${columnName(headers.length - 1)}${allRows.length}`;
-  const lastColumn = columnName(headers.length - 1);
+  const lastColumn = columnName(maxColumns - 1);
+  const lastRef = `${lastColumn}${allRows.length}`;
+  const mergeCells = allRows
+    .map((row, index) => (row.type === "section" || row.type === "subtitle" ? `<mergeCell ref="A${index + 1}:${lastColumn}${index + 1}"/>` : ""))
+    .filter(Boolean);
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
       <dimension ref="A1:${lastRef}"/>
       <sheetViews>
         <sheetView workbookViewId="0">
-          <pane ySplit="${headerRowIndex}" topLeftCell="A${headerRowIndex + 1}" activePane="bottomLeft" state="frozen"/>
+          <pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/>
         </sheetView>
       </sheetViews>
       <cols>${cols}</cols>
       <sheetData>${sheetRows}</sheetData>
-      <autoFilter ref="A${headerRowIndex}:${lastRef}"/>
-      <mergeCells count="2">
-        <mergeCell ref="A1:${lastColumn}1"/>
-        <mergeCell ref="A2:${lastColumn}2"/>
-      </mergeCells>
+      <mergeCells count="${mergeCells.length}">${mergeCells.join("")}</mergeCells>
     </worksheet>`;
 }
 function createXlsxWorkbook(sheets) {
@@ -316,12 +322,17 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
   const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const subtitle = `Periodo: ${periodLabel} | Categoria: ${categoryLabel} | Gerado em: ${formatReportDate(/* @__PURE__ */ new Date())}`;
   const workbook = createXlsxWorkbook([
-    { name: "Capa", title: "Relatorio de Indicadores de Qualidade", subtitle, headers: ["Campo", "Valor"], rows: [["Relatorio", "Indicadores de Qualidade"], ["Periodo", periodLabel], ["Categoria", categoryLabel], ["Total de inspecoes", inspecoes.length], ["Total de ocorrencias", totalPoints]] },
-    { name: "Resumo", title: "Resumo executivo", subtitle, headers: ["Indicador", "Valor"], rows: summaryRows },
-    { name: "Ranking", title: "Ranking de recorrencias", subtitle, headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rows: rankingRows },
-    { name: "Severidade", title: "Distribuicao por severidade", subtitle, headers: ["Severidade", "Quantidade", "Percentual"], rows: severityRows },
-    { name: "Inspecoes", title: "Inspecoes analisadas", subtitle, headers: ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], rows: inspectionRows },
-    { name: "Pontos criticos", title: "Detalhamento dos pontos criticos", subtitle, headers: ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], rows: pointRows }
+    {
+      name: "Relatorio",
+      sections: [
+        { title: "Relatorio de Indicadores de Qualidade", subtitle, headers: ["Campo", "Valor"], rows: [["Relatorio", "Indicadores de Qualidade"], ["Periodo", periodLabel], ["Categoria", categoryLabel], ["Total de inspecoes", inspecoes.length], ["Total de ocorrencias", totalPoints]] },
+        { title: "Resumo executivo", subtitle: "", headers: ["Indicador", "Valor"], rows: summaryRows },
+        { title: "Ranking de recorrencias", subtitle: "", headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rows: rankingRows },
+        { title: "Distribuicao por severidade", subtitle: "", headers: ["Severidade", "Quantidade", "Percentual"], rows: severityRows },
+        { title: "Inspecoes analisadas", subtitle: "", headers: ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], rows: inspectionRows },
+        { title: "Detalhamento dos pontos criticos", subtitle: "", headers: ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], rows: pointRows }
+      ]
+    }
   ]);
   const blob = new Blob([workbook], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = window.URL.createObjectURL(blob);
