@@ -158,9 +158,11 @@ function columnName(index) {
   }
   return name;
 }
-function worksheetXml(headers, rows) {
+function worksheetXml(sheet) {
+  const { title, subtitle, headers, rows } = sheet;
   const bodyRows = rows.length > 0 ? rows : [["Sem dados para este filtro."]];
-  const allRows = [headers, ...bodyRows];
+  const headerRowIndex = 4;
+  const allRows = [[title], [subtitle], [], headers, ...bodyRows];
   const cols = headers
     .map((header, index) => {
       const width = Math.min(
@@ -179,28 +181,34 @@ function worksheetXml(headers, rows) {
         .map((_, colIndex) => {
           const value = row[colIndex] ?? "";
           const ref = `${columnName(colIndex)}${rowIndex + 1}`;
-          const style = rowIndex === 0 ? ' s="1"' : "";
+          const style = rowIndex === 0 ? ' s="2"' : rowIndex === 1 ? ' s="3"' : rowIndex === headerRowIndex - 1 ? ' s="1"' : "";
           if (typeof value === "number") {
             return `<c r="${ref}"${style}><v>${value}</v></c>`;
           }
           return `<c r="${ref}" t="inlineStr"${style}><is><t>${escapeHtml(value)}</t></is></c>`;
         })
         .join("");
-      return `<row r="${rowIndex + 1}">${cells}</row>`;
+      const height = rowIndex === 0 ? ' ht="26" customHeight="1"' : rowIndex === 1 ? ' ht="20" customHeight="1"' : rowIndex === headerRowIndex - 1 ? ' ht="24" customHeight="1"' : "";
+      return `<row r="${rowIndex + 1}"${height}>${cells}</row>`;
     })
     .join("");
   const lastRef = `${columnName(headers.length - 1)}${allRows.length}`;
+  const lastColumn = columnName(headers.length - 1);
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
       <dimension ref="A1:${lastRef}"/>
       <sheetViews>
         <sheetView workbookViewId="0">
-          <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+          <pane ySplit="${headerRowIndex}" topLeftCell="A${headerRowIndex + 1}" activePane="bottomLeft" state="frozen"/>
         </sheetView>
       </sheetViews>
       <cols>${cols}</cols>
       <sheetData>${sheetRows}</sheetData>
-      <autoFilter ref="A1:${lastRef}"/>
+      <autoFilter ref="A${headerRowIndex}:${lastRef}"/>
+      <mergeCells count="2">
+        <mergeCell ref="A1:${lastColumn}1"/>
+        <mergeCell ref="A2:${lastColumn}2"/>
+      </mergeCells>
     </worksheet>`;
 }
 function createXlsxWorkbook(sheets) {
@@ -233,11 +241,11 @@ function createXlsxWorkbook(sheets) {
     </Relationships>`;
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-      <fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font></fonts>
-      <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF075985"/><bgColor indexed="64"/></patternFill></fill></fills>
-      <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+      <fonts count="4"><font><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF0F172A"/><sz val="16"/><name val="Arial"/></font><font><color rgb="FF475569"/><sz val="10"/><name val="Arial"/></font></fonts>
+      <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF075985"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE0F2FE"/><bgColor indexed="64"/></patternFill></fill></fills>
+      <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border></borders>
       <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-      <cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf></cellXfs>
+      <cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf></cellXfs>
       <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
     </styleSheet>`;
   const now = new Date().toISOString();
@@ -253,7 +261,7 @@ function createXlsxWorkbook(sheets) {
     "xl/styles.xml": strToU8(styles)
   };
   sheets.forEach((sheet, index) => {
-    files[`xl/worksheets/sheet${index + 1}.xml`] = strToU8(worksheetXml(sheet.headers, sheet.rows));
+    files[`xl/worksheets/sheet${index + 1}.xml`] = strToU8(worksheetXml(sheet));
   });
   return zipSync(files);
 }
@@ -306,13 +314,14 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
   const rankingRows = analytics.items.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`, (item.labels ?? [item.label]).join(" | ")]);
   const severityRows = analytics.severityItems.map((item) => [item.label, item.count, `${Math.round(item.percentage)}%`]);
   const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const subtitle = `Periodo: ${periodLabel} | Categoria: ${categoryLabel} | Gerado em: ${formatReportDate(/* @__PURE__ */ new Date())}`;
   const workbook = createXlsxWorkbook([
-    { name: "Capa", headers: ["Campo", "Valor"], rows: [["Relatorio", "Indicadores de Qualidade"], ["Periodo", periodLabel], ["Categoria", categoryLabel]] },
-    { name: "Resumo", headers: ["Indicador", "Valor"], rows: summaryRows },
-    { name: "Ranking", headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rows: rankingRows },
-    { name: "Severidade", headers: ["Severidade", "Quantidade", "Percentual"], rows: severityRows },
-    { name: "Inspecoes", headers: ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], rows: inspectionRows },
-    { name: "Pontos criticos", headers: ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], rows: pointRows }
+    { name: "Capa", title: "Relatorio de Indicadores de Qualidade", subtitle, headers: ["Campo", "Valor"], rows: [["Relatorio", "Indicadores de Qualidade"], ["Periodo", periodLabel], ["Categoria", categoryLabel], ["Total de inspecoes", inspecoes.length], ["Total de ocorrencias", totalPoints]] },
+    { name: "Resumo", title: "Resumo executivo", subtitle, headers: ["Indicador", "Valor"], rows: summaryRows },
+    { name: "Ranking", title: "Ranking de recorrencias", subtitle, headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rows: rankingRows },
+    { name: "Severidade", title: "Distribuicao por severidade", subtitle, headers: ["Severidade", "Quantidade", "Percentual"], rows: severityRows },
+    { name: "Inspecoes", title: "Inspecoes analisadas", subtitle, headers: ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], rows: inspectionRows },
+    { name: "Pontos criticos", title: "Detalhamento dos pontos criticos", subtitle, headers: ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], rows: pointRows }
   ]);
   const blob = new Blob([workbook], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = window.URL.createObjectURL(blob);
