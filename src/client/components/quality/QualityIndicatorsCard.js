@@ -132,21 +132,6 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
-function escapeCsv(value) {
-  const text = String(value ?? "").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
-  return `"${text.replaceAll('"', '""')}"`;
-}
-function buildCsvSection(title, headers, rows) {
-  const bodyRows = rows.length > 0 ? rows : [["Sem dados para este filtro."]];
-  return [
-    [title],
-    headers,
-    ...bodyRows,
-    []
-  ]
-    .map((row) => row.map(escapeCsv).join(";"))
-    .join("\n");
-}
 function getMatchingPoints(inspecao, selectedCategory) {
   return (inspecao.pontosCriticos ?? []).filter((ponto) => {
     const label = normalizeLabel(ponto.categoria);
@@ -162,18 +147,31 @@ function getPhotoItems(inspecao, points) {
   });
   return [...unique.values()];
 }
-function buildTable(title, headers, rows) {
+function buildExcelCell(value, styleId = "") {
+  const type = typeof value === "number" ? "Number" : "String";
+  const style = styleId ? ` ss:StyleID="${styleId}"` : "";
+  return `<Cell${style}><Data ss:Type="${type}">${escapeHtml(value)}</Data></Cell>`;
+}
+function buildExcelRow(cells, styleId = "") {
+  return `<Row>${cells.map((cell) => buildExcelCell(cell, styleId)).join("")}</Row>`;
+}
+function buildExcelWorksheet(name, headers, rows) {
   const bodyRows = rows.length > 0 ? rows : [["Sem dados para este filtro."]];
+  const safeName = name.slice(0, 31).replace(/[\[\]:*?/\\]/g, " ");
   return `
-    <h2>${escapeHtml(title)}</h2>
-    <table>
-      <thead>
-        <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
-      </thead>
-      <tbody>
-        ${bodyRows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}
-      </tbody>
-    </table>
+    <Worksheet ss:Name="${escapeHtml(safeName)}">
+      <Table>
+        ${buildExcelRow(headers, "Header")}
+        ${bodyRows.map((row) => buildExcelRow(row)).join("")}
+      </Table>
+      <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+        <FreezePanes/>
+        <FrozenNoSplit/>
+        <SplitHorizontal>1</SplitHorizontal>
+        <TopRowBottomPane>1</TopRowBottomPane>
+        <ActivePane>2</ActivePane>
+      </WorksheetOptions>
+    </Worksheet>
   `;
 }
 function exportQualitySpreadsheet({ inspecoes, analytics, period, category, customStart, customEnd }) {
@@ -224,20 +222,41 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
   ];
   const rankingRows = analytics.items.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`, (item.labels ?? [item.label]).join(" | ")]);
   const severityRows = analytics.severityItems.map((item) => [item.label, item.count, `${Math.round(item.percentage)}%`]);
-  const csv = [
-    buildCsvSection("Relatorio de Indicadores de Qualidade", ["Campo", "Valor"], [["Periodo", periodLabel], ["Categoria", categoryLabel]]),
-    buildCsvSection("Resumo executivo", ["Indicador", "Valor"], summaryRows),
-    buildCsvSection("Ranking de recorrencias", ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rankingRows),
-    buildCsvSection("Severidade", ["Severidade", "Quantidade", "Percentual"], severityRows),
-    buildCsvSection("Inspecoes analisadas", ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], inspectionRows),
-    buildCsvSection("Detalhamento dos pontos criticos", ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], pointRows)
-  ].join("\n");
-  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const workbook = `<?xml version="1.0" encoding="UTF-8"?>
+    <?mso-application progid="Excel.Sheet"?>
+    <Workbook
+      xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+      xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+      xmlns:html="http://www.w3.org/TR/REC-html40">
+      <Styles>
+        <Style ss:ID="Default" ss:Name="Normal">
+          <Alignment ss:Vertical="Top" ss:WrapText="1"/>
+          <Font ss:FontName="Arial" ss:Size="10" ss:Color="#0F172A"/>
+        </Style>
+        <Style ss:ID="Header">
+          <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+          <Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+          <Interior ss:Color="#075985" ss:Pattern="Solid"/>
+          <Borders>
+            <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+          </Borders>
+        </Style>
+      </Styles>
+      ${buildExcelWorksheet("Capa", ["Campo", "Valor"], [["Relatorio", "Indicadores de Qualidade"], ["Periodo", periodLabel], ["Categoria", categoryLabel]])}
+      ${buildExcelWorksheet("Resumo", ["Indicador", "Valor"], summaryRows)}
+      ${buildExcelWorksheet("Ranking", ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rankingRows)}
+      ${buildExcelWorksheet("Severidade", ["Severidade", "Quantidade", "Percentual"], severityRows)}
+      ${buildExcelWorksheet("Inspecoes", ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], inspectionRows)}
+      ${buildExcelWorksheet("Pontos criticos", ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], pointRows)}
+    </Workbook>`;
+  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   link.href = url;
-  link.download = `relatorio-qualidade-${stamp}.csv`;
+  link.download = `relatorio-qualidade-${stamp}.xls`;
   document.body.appendChild(link);
   link.click();
   link.remove();
