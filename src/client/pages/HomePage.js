@@ -43,6 +43,12 @@ export default function HomePage() {
           children: [
             _jsx(Button, {
               type: "button",
+              onClick: () => navigate("/inspecao-expressa"),
+              children: "Inspecao expressa"
+            }),
+            _jsx(Button, {
+              type: "button",
+              variant: "secondary",
               onClick: () => navigate("/nova-inspecao"),
               children: "Nova inspe\u00e7\u00e3o"
             }),

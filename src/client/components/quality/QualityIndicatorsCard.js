@@ -122,13 +122,22 @@ function filterByPeriod(inspecoes, option, customStart, customEnd) {
   });
 }
 function DonutChart({ items }) {
-  const size = 220;
-  const strokeWidth = 28;
+  const size = 240;
+  const strokeWidth = 34;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
+  const total = items.reduce((sum, current) => sum + current.count, 0);
+  const leading = items[0];
+  const gap = items.length > 1 ? 3.5 : 0;
   let cumulative = 0;
   return /* @__PURE__ */ jsxs("div", { className: "quality-donut", children: [
     /* @__PURE__ */ jsxs("svg", { width: size, height: size, viewBox: `0 0 ${size} ${size}`, role: "img", "aria-label": "Gr\xE1fico de recorr\xEAncias", children: [
+      /* @__PURE__ */ jsx(
+        "defs",
+        {
+          children: /* @__PURE__ */ jsx("filter", { id: "qualityDonutGlow", x: "-35%", y: "-35%", width: "170%", height: "170%", children: /* @__PURE__ */ jsx("feDropShadow", { dx: "0", dy: "8", stdDeviation: "8", floodColor: "#020617", floodOpacity: "0.38" }) })
+        }
+      ),
       /* @__PURE__ */ jsx(
         "circle",
         {
@@ -140,13 +149,24 @@ function DonutChart({ items }) {
           strokeWidth
         }
       ),
+      /* @__PURE__ */ jsx(
+        "circle",
+        {
+          className: "quality-donut__inner-ring",
+          cx: size / 2,
+          cy: size / 2,
+          r: radius - strokeWidth / 2 - 8
+        }
+      ),
       items.map((item) => {
-        const dash = item.count / items.reduce((sum, current) => sum + current.count, 0) * circumference;
+        const rawDash = item.count / total * circumference;
+        const dash = Math.max(0, rawDash - gap);
         const offset = circumference - cumulative;
-        cumulative += dash;
-        return /* @__PURE__ */ jsx(
+        cumulative += rawDash;
+        return /* @__PURE__ */ jsxs(
           "circle",
           {
+            className: "quality-donut__segment",
             cx: size / 2,
             cy: size / 2,
             r: radius,
@@ -156,15 +176,22 @@ function DonutChart({ items }) {
             strokeDasharray: `${dash} ${circumference - dash}`,
             strokeDashoffset: offset,
             transform: `rotate(-90 ${size / 2} ${size / 2})`,
-            strokeLinecap: "round"
+            strokeLinecap: "round",
+            filter: "url(#qualityDonutGlow)",
+            children: /* @__PURE__ */ jsx("title", { children: `${item.label}: ${item.count} ocorr\xEAncias (${Math.round(item.percentage)}%)` })
           },
           item.label
         );
       })
     ] }),
     /* @__PURE__ */ jsxs("div", { className: "quality-donut__center", children: [
-      /* @__PURE__ */ jsx("strong", { children: items.reduce((sum, current) => sum + current.count, 0) }),
-      /* @__PURE__ */ jsx("span", { children: "ocorr\xEAncias" })
+      /* @__PURE__ */ jsx("strong", { children: total }),
+      /* @__PURE__ */ jsx("span", { children: "ocorr\xEAncias" }),
+      leading ? /* @__PURE__ */ jsxs("small", { children: [
+        Math.round(leading.percentage),
+        "% ",
+        leading.label
+      ] }) : null
     ] })
   ] });
 }
