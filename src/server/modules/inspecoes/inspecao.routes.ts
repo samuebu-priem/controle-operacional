@@ -278,7 +278,12 @@ inspecaoRoutes.get("/", async (req, res, next) => {
       },
       include: {
         frota: true,
-        pontosCriticos: true
+        pontosCriticos: {
+          include: {
+            fotos: true
+          }
+        },
+        fotos: true
       }
     });
 
@@ -286,7 +291,8 @@ inspecaoRoutes.get("/", async (req, res, next) => {
       inspecoes: inspecoes.map((inspecao: Parameters<typeof formatInspecao>[0]) =>
         formatInspecao({
           ...inspecao,
-          pontosCriticos: inspecao.pontosCriticos
+          pontosCriticos: inspecao.pontosCriticos,
+          fotos: inspecao.fotos
         })
       )
     });

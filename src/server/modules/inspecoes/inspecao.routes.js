@@ -177,13 +177,19 @@ inspecaoRoutes.get("/", async (req, res, next) => {
             },
             include: {
                 frota: true,
-                pontosCriticos: true
+                pontosCriticos: {
+                    include: {
+                        fotos: true
+                    }
+                },
+                fotos: true
             }
         });
         return res.json({
             inspecoes: inspecoes.map((inspecao) => formatInspecao({
                 ...inspecao,
-                pontosCriticos: inspecao.pontosCriticos
+                pontosCriticos: inspecao.pontosCriticos,
+                fotos: inspecao.fotos
             }))
         });
     }

@@ -121,6 +121,131 @@ function filterByPeriod(inspecoes, option, customStart, customEnd) {
     return date >= range.from && date <= range.to;
   });
 }
+function formatReportDate(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleString("pt-BR");
+}
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+function getMatchingPoints(inspecao, selectedCategory) {
+  return (inspecao.pontosCriticos ?? []).filter((ponto) => {
+    const label = normalizeLabel(ponto.categoria);
+    return selectedCategory === "ALL" || label === selectedCategory;
+  });
+}
+function getPhotoItems(inspecao, points) {
+  const photos = [...(inspecao.fotos ?? []), ...points.flatMap((ponto) => ponto.fotos ?? [])];
+  const unique = /* @__PURE__ */ new Map();
+  photos.forEach((foto) => {
+    const key = foto.id ?? foto.imageUrl ?? foto.fileName;
+    if (key) unique.set(key, foto);
+  });
+  return [...unique.values()];
+}
+function buildTable(title, headers, rows) {
+  const bodyRows = rows.length > 0 ? rows : [["Sem dados para este filtro."]];
+  return `
+    <h2>${escapeHtml(title)}</h2>
+    <table>
+      <thead>
+        <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${bodyRows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+}
+function exportQualitySpreadsheet({ inspecoes, analytics, period, category, customStart, customEnd }) {
+  const periodLabel = period === "CUSTOM" ? `${customStart || "inicio"} a ${customEnd || "fim"}` : PERIOD_LABELS[period];
+  const categoryLabel = category === "ALL" ? "Todas" : category;
+  const totalPoints = analytics.items.reduce((sum, item) => sum + item.count, 0);
+  const inspectionRows = inspecoes.map((inspecao) => {
+    const points = getMatchingPoints(inspecao, category);
+    const photos = getPhotoItems(inspecao, points);
+    return [
+      formatReportDate(inspecao.dataInspecao),
+      inspecao.frota?.numeroFrota ?? inspecao.frotaId ?? "",
+      inspecao.frota?.placa ?? "",
+      inspecao.frota?.tipoEquipamento ?? "",
+      inspecao.tipoInspecao,
+      inspecao.status,
+      inspecao.nomeInspetor,
+      points.length,
+      photos.length,
+      photos.length > 0 ? photos.map((foto) => foto.fileName || foto.imageUrl).join(" | ") : "Sem arquivo informado",
+      inspecao.observacoesGerais ?? ""
+    ];
+  });
+  const pointRows = inspecoes.flatMap((inspecao) =>
+    getMatchingPoints(inspecao, category).map((ponto) => {
+      const photos = getPhotoItems(inspecao, [ponto]);
+      return [
+        formatReportDate(inspecao.dataInspecao),
+        inspecao.frota?.numeroFrota ?? inspecao.frotaId ?? "",
+        inspecao.frota?.placa ?? "",
+        normalizeLabel(ponto.categoria),
+        ponto.localizacao,
+        ponto.severidade,
+        ponto.descricao,
+        ponto.procedimentoRecomendado,
+        photos.length > 0 ? photos.map((foto) => foto.imageUrl || foto.fileName).join(" | ") : "Sem arquivo informado"
+      ];
+    })
+  );
+  const summaryRows = [
+    ["Gerado em", formatReportDate(/* @__PURE__ */ new Date())],
+    ["Periodo", periodLabel],
+    ["Categoria filtrada", categoryLabel],
+    ["Total de inspecoes", inspecoes.length],
+    ["Inspecoes com ponto critico", analytics.withCriticalPoints],
+    ["Total de ocorrencias", totalPoints],
+    ["Recorrencia lider", analytics.items[0]?.label ?? "Sem recorrencia"]
+  ];
+  const rankingRows = analytics.items.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`, (item.labels ?? [item.label]).join(" | ")]);
+  const severityRows = analytics.severityItems.map((item) => [item.label, item.count, `${Math.round(item.percentage)}%`]);
+  const html = `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: Arial, sans-serif; color: #0f172a; }
+          h1 { color: #075985; margin-bottom: 4px; }
+          h2 { color: #0f172a; margin-top: 26px; }
+          p { color: #475569; }
+          table { border-collapse: collapse; width: 100%; margin-bottom: 18px; }
+          th { background: #075985; color: #ffffff; font-weight: 700; text-align: left; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; }
+          tr:nth-child(even) td { background: #f8fafc; }
+          .meta { margin-bottom: 18px; }
+        </style>
+      </head>
+      <body>
+        <h1>Relatorio de Indicadores de Qualidade</h1>
+        <p class="meta">Controle operacional - ${escapeHtml(periodLabel)} - Categoria: ${escapeHtml(categoryLabel)}</p>
+        ${buildTable("Resumo executivo", ["Indicador", "Valor"], summaryRows)}
+        ${buildTable("Ranking de recorrencias", ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rankingRows)}
+        ${buildTable("Severidade", ["Severidade", "Quantidade", "Percentual"], severityRows)}
+        ${buildTable("Inspecoes analisadas", ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], inspectionRows)}
+        ${buildTable("Detalhamento dos pontos criticos", ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], pointRows)}
+      </body>
+    </html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `relatorio-qualidade-${stamp}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
 function DonutChart({ items }) {
   const size = 240;
   const strokeWidth = 34;
@@ -216,6 +341,16 @@ function QualityIndicatorsCard({ inspecoes }) {
     }
     navigate(`/recorrencias/${encodeURIComponent(item.label)}?${params.toString()}`);
   }
+  function handleExportReport() {
+    exportQualitySpreadsheet({
+      inspecoes: filteredInspecoes,
+      analytics: topIssues,
+      period,
+      category,
+      customStart,
+      customEnd
+    });
+  }
   return /* @__PURE__ */ jsxs("section", { className: "quality-section", children: [
     /* @__PURE__ */ jsx("div", { className: "section-head quality-section__head", children: /* @__PURE__ */ jsxs("div", { children: [
       /* @__PURE__ */ jsx("p", { className: "card-label", children: "Indicadores de Qualidade" }),
@@ -280,7 +415,8 @@ function QualityIndicatorsCard({ inspecoes }) {
               ]
             }
           )
-        ] })
+        ] }),
+        /* @__PURE__ */ jsx("div", { className: "quality-export-action", children: /* @__PURE__ */ jsx(Button, { type: "button", variant: "secondary", onClick: handleExportReport, children: "Exportar relatorio" }) })
       ] }),
       /* @__PURE__ */ jsxs("div", { className: "quality-kpis", children: [
         /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
