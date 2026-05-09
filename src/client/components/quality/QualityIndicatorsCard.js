@@ -132,6 +132,21 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+function escapeCsv(value) {
+  const text = String(value ?? "").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+  return `"${text.replaceAll('"', '""')}"`;
+}
+function buildCsvSection(title, headers, rows) {
+  const bodyRows = rows.length > 0 ? rows : [["Sem dados para este filtro."]];
+  return [
+    [title],
+    headers,
+    ...bodyRows,
+    []
+  ]
+    .map((row) => row.map(escapeCsv).join(";"))
+    .join("\n");
+}
 function getMatchingPoints(inspecao, selectedCategory) {
   return (inspecao.pontosCriticos ?? []).filter((ponto) => {
     const label = normalizeLabel(ponto.categoria);
@@ -209,38 +224,20 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
   ];
   const rankingRows = analytics.items.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`, (item.labels ?? [item.label]).join(" | ")]);
   const severityRows = analytics.severityItems.map((item) => [item.label, item.count, `${Math.round(item.percentage)}%`]);
-  const html = `<!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <style>
-          body { font-family: Arial, sans-serif; color: #0f172a; }
-          h1 { color: #075985; margin-bottom: 4px; }
-          h2 { color: #0f172a; margin-top: 26px; }
-          p { color: #475569; }
-          table { border-collapse: collapse; width: 100%; margin-bottom: 18px; }
-          th { background: #075985; color: #ffffff; font-weight: 700; text-align: left; }
-          th, td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; }
-          tr:nth-child(even) td { background: #f8fafc; }
-          .meta { margin-bottom: 18px; }
-        </style>
-      </head>
-      <body>
-        <h1>Relatorio de Indicadores de Qualidade</h1>
-        <p class="meta">Controle operacional - ${escapeHtml(periodLabel)} - Categoria: ${escapeHtml(categoryLabel)}</p>
-        ${buildTable("Resumo executivo", ["Indicador", "Valor"], summaryRows)}
-        ${buildTable("Ranking de recorrencias", ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rankingRows)}
-        ${buildTable("Severidade", ["Severidade", "Quantidade", "Percentual"], severityRows)}
-        ${buildTable("Inspecoes analisadas", ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], inspectionRows)}
-        ${buildTable("Detalhamento dos pontos criticos", ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], pointRows)}
-      </body>
-    </html>`;
-  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const csv = [
+    buildCsvSection("Relatorio de Indicadores de Qualidade", ["Campo", "Valor"], [["Periodo", periodLabel], ["Categoria", categoryLabel]]),
+    buildCsvSection("Resumo executivo", ["Indicador", "Valor"], summaryRows),
+    buildCsvSection("Ranking de recorrencias", ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rankingRows),
+    buildCsvSection("Severidade", ["Severidade", "Quantidade", "Percentual"], severityRows),
+    buildCsvSection("Inspecoes analisadas", ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], inspectionRows),
+    buildCsvSection("Detalhamento dos pontos criticos", ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], pointRows)
+  ].join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   link.href = url;
-  link.download = `relatorio-qualidade-${stamp}.xls`;
+  link.download = `relatorio-qualidade-${stamp}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
