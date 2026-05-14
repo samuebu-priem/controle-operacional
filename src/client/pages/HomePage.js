@@ -40,6 +40,8 @@ function buildHomeSummary(inspecoes) {
   const categories = [...categoryCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
   const totalOccurrences = categories.reduce((sum, [, count]) => sum + count, 0);
   const leadingCategory = categories[0]?.[0] ?? "Sem recorrencia";
+  const leadingCount = categories[0]?.[1] ?? 0;
+  const leadingShare = totalOccurrences > 0 ? Math.round(leadingCount / totalOccurrences * 100) : 0;
   const recentInspections = [...inspecoes]
     .sort((a, b) => new Date(b.dataInspecao).getTime() - new Date(a.dataInspecao).getTime())
     .slice(0, 5);
@@ -52,6 +54,7 @@ function buildHomeSummary(inspecoes) {
     categories,
     totalOccurrences,
     leadingCategory,
+    leadingShare,
     recentInspections
   };
 }
@@ -61,8 +64,7 @@ export default function HomePage() {
   const [inspecoes, setInspecoes] = useState([]);
   const summary = buildHomeSummary(inspecoes);
   const donutStyle = {
-    "--approved": `${summary.approvedRate}%`,
-    "--critical": `${summary.pendingRate}%`
+    "--leading": `${summary.leadingShare}%`
   };
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export default function HomePage() {
       children: [
         _jsx(AppHeader, {
           title: "Controle Operacional",
-          subtitle: "Resumo operacional das inspe\u00e7\u00f5es, qualidade e frotas."
+          subtitle: "Visao geral das inspe\u00e7\u00f5es, qualidade e frotas."
         }),
         _jsxs("section", {
           className: "home-dashboard",
@@ -102,8 +104,8 @@ export default function HomePage() {
                   className: "home-hero-card__copy",
                   children: [
                     _jsx("p", { className: "card-label", children: "Painel inicial" }),
-                    _jsx("h2", { children: "Resumo das operacoes" }),
-                    _jsx("p", { children: "Acompanhe o volume de inspeções, recorrências de qualidade e os registros mais recentes sem sair da primeira tela." })
+                    _jsx("h2", { children: "Resumo operacional" }),
+                    _jsx("p", { children: "Acompanhe o movimento das inspeções, os principais alertas de qualidade e os registros mais recentes em uma tela limpa." })
                   ]
                 }),
                 _jsxs("div", {
@@ -118,10 +120,10 @@ export default function HomePage() {
             _jsxs("div", {
               className: "home-summary-grid",
               children: [
-                _jsxs("article", { className: "home-metric", children: [_jsx("span", { children: "Inspecoes" }), _jsx("strong", { children: summary.total }), _jsx("small", { children: "registros no historico" })] }),
-                _jsxs("article", { className: "home-metric", children: [_jsx("span", { children: "Com ponto critico" }), _jsx("strong", { children: summary.withCritical }), _jsxs("small", { children: [summary.pendingRate, "% das inspeções"] })] }),
-                _jsxs("article", { className: "home-metric", children: [_jsx("span", { children: "Aprovacao" }), _jsxs("strong", { children: [summary.approvedRate, "%"] }), _jsx("small", { children: "sem reprovação" })] }),
-                _jsxs("article", { className: "home-metric", children: [_jsx("span", { children: "Recorrencia lider" }), _jsx("strong", { children: summary.leadingCategory }), _jsx("small", { children: "categoria mais frequente" })] })
+                _jsxs("article", { className: "home-metric home-metric--blue", children: [_jsx("span", { children: "Inspecoes" }), _jsx("strong", { children: summary.total }), _jsx("small", { children: "registros no historico" })] }),
+                _jsxs("article", { className: "home-metric home-metric--amber", children: [_jsx("span", { children: "Com ponto critico" }), _jsx("strong", { children: summary.withCritical }), _jsxs("small", { children: [summary.pendingRate, "% das inspeções"] })] }),
+                _jsxs("article", { className: "home-metric home-metric--green", children: [_jsx("span", { children: "Aprovacao" }), _jsxs("strong", { children: [summary.approvedRate, "%"] }), _jsx("small", { children: "sem reprovação" })] }),
+                _jsxs("article", { className: "home-metric home-metric--cyan", children: [_jsx("span", { children: "Recorrencia lider" }), _jsx("strong", { children: summary.leadingCategory }), _jsx("small", { children: "categoria mais frequente" })] })
               ]
             }),
             _jsxs("div", {
@@ -134,7 +136,7 @@ export default function HomePage() {
                     _jsxs("div", {
                       className: "home-quality-card__body",
                       children: [
-                        _jsxs("div", { className: "home-quality-donut", style: donutStyle, children: [_jsx("strong", { children: summary.totalOccurrences }), _jsx("span", { children: "ocorrencias" })] }),
+                        _jsxs("div", { className: "home-quality-donut", style: donutStyle, children: [_jsx("strong", { children: summary.totalOccurrences }), _jsx("span", { children: "ocorrencias" }), _jsxs("small", { children: [summary.leadingShare, "% lider"] })] }),
                         _jsx("div", {
                           className: "home-quality-list",
                           children: summary.categories.length > 0 ? summary.categories.map(([category, count]) => _jsxs("div", { children: [_jsx("span", { children: category }), _jsx("strong", { children: count })] }, category)) : _jsx("p", { className: "helper", children: "Sem ocorrências registradas." })
