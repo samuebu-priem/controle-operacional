@@ -204,7 +204,7 @@ function getCellStyle(row, rowIndex, colIndex, sheet) {
     if (normalizedValue === "LEVE") return ' s="8"';
   }
 
-  if (sheet.name === "Resumo" && header === "Valor") return ' s="11"';
+  if ((sheet.name === "Painel" && header === "Resultado") || (sheet.name === "Resumo dados" && header === "Valor")) return ' s="11"';
   if (isCentered) return isZebra ? ' s="7"' : ' s="6"';
   return isZebra ? ' s="5"' : "";
 }
@@ -380,17 +380,36 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
   ];
   const rankingRows = analytics.items.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`, (item.labels ?? [item.label]).join(" | ")]);
   const severityRows = analytics.severityItems.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`]);
+  const dashboardRows = [
+    ["Contexto", "Periodo analisado", periodLabel, "Filtro aplicado ao relatorio"],
+    ["Contexto", "Categoria", categoryLabel, "Base de recorrencias considerada"],
+    ["Operacao", "Inspecoes no periodo", inspecoes.length, "Total de registros analisados"],
+    ["Operacao", "Inspecoes com ponto critico", analytics.withCriticalPoints, "Registros que exigem atencao"],
+    ["Qualidade", "Ocorrencias registradas", totalPoints, "Soma dos pontos criticos filtrados"],
+    ["Qualidade", "Recorrencia lider", analytics.items[0]?.label ?? "Sem recorrencia", analytics.items[0] ? `${analytics.items[0].count} ocorrencias (${Math.round(analytics.items[0].percentage)}%)` : "Sem volume no filtro"],
+    ...analytics.items.slice(0, 5).map((item, index) => ["Pizza de recorrencias", `${index + 1}. ${item.label}`, `${Math.round(item.percentage)}%`, `${item.count} ocorrencias`]),
+    ...analytics.severityItems.map((item) => ["Severidade", item.label, `${Math.round(item.percentage)}%`, `${item.count} ocorrencias`])
+  ];
   const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const subtitle = `Periodo: ${periodLabel} | Categoria: ${categoryLabel} | Gerado em: ${formatReportDate(/* @__PURE__ */ new Date())}`;
   const workbook = createXlsxWorkbook([
     {
-      name: "Resumo",
-      title: "Relatorio de Indicadores de Qualidade",
+      name: "Painel",
+      title: "Painel executivo de qualidade",
+      subtitle,
+      headers: ["Bloco", "Indicador", "Resultado", "Leitura"],
+      rows: dashboardRows,
+      columnWidths: [24, 34, 24, 56],
+      tabColor: "FF064E3B"
+    },
+    {
+      name: "Resumo dados",
+      title: "Resumo dos dados do relatorio",
       subtitle,
       headers: ["Indicador", "Valor", "Observacao"],
       rows: summaryRows,
       columnWidths: [30, 28, 52],
-      tabColor: "FF064E3B"
+      tabColor: "FF0369A1"
     },
     {
       name: "Recorrencias",
