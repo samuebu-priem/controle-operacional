@@ -180,6 +180,34 @@ function buildTableSheetRows(sheet) {
   bodyRows.forEach((row) => rows.push({ type: "data", cells: row }));
   return rows;
 }
+function getCellStyle(row, rowIndex, colIndex, sheet) {
+  if (row.type === "section") return ' s="2"';
+  if (row.type === "subtitle") return ' s="3"';
+  if (row.type === "header") return ' s="1"';
+  if (row.type === "blank") return ' s="4"';
+
+  const header = sheet.headers?.[colIndex] ?? "";
+  const value = row.cells[colIndex];
+  const normalizedValue = String(value ?? "").toUpperCase();
+  const isCentered = typeof value === "number" || ["#", "POSICAO", "OCORRENCIAS", "PERCENTUAL", "ARQUIVOS", "PONTOS CRITICOS", "QUANTIDADE"].includes(header.toUpperCase());
+  const isZebra = rowIndex % 2 === 0;
+
+  if (header === "Status") {
+    if (normalizedValue === "APROVADO") return ' s="8"';
+    if (normalizedValue === "REPROVADO") return ' s="9"';
+    if (normalizedValue === "COM_OBSERVACAO") return ' s="10"';
+  }
+
+  if (header.includes("Severidade") || header === "Maior severidade") {
+    if (normalizedValue === "GRAVE") return ' s="9"';
+    if (normalizedValue === "MEDIA") return ' s="10"';
+    if (normalizedValue === "LEVE") return ' s="8"';
+  }
+
+  if (sheet.name === "Resumo" && header === "Valor") return ' s="11"';
+  if (isCentered) return isZebra ? ' s="7"' : ' s="6"';
+  return isZebra ? ' s="5"' : "";
+}
 function buildSingleSheetRows(sections) {
   const rows = [];
   sections.forEach((section, sectionIndex) => {
@@ -207,7 +235,7 @@ function worksheetXml(sheet) {
     .map((row, rowIndex) => {
       const cells = Array.from({ length: maxColumns }, (_, colIndex) => {
           const ref = `${columnName(colIndex)}${rowIndex + 1}`;
-          const style = row.type === "section" ? ' s="2"' : row.type === "subtitle" ? ' s="3"' : row.type === "header" ? ' s="1"' : row.type === "blank" ? ' s="4"' : rowIndex % 2 === 0 ? ' s="5"' : "";
+          const style = getCellStyle(row, rowIndex, colIndex, sheet);
           const value = row.cells[colIndex] ?? "";
           if (typeof value === "number") {
             return `<c r="${ref}"${style}><v>${value}</v></c>`;
@@ -225,11 +253,13 @@ function worksheetXml(sheet) {
     .map((row, index) => (row.type === "section" || row.type === "subtitle" ? `<mergeCell ref="A${index + 1}:${lastColumn}${index + 1}"/>` : ""))
     .filter(Boolean);
   const filterRef = isTableSheet ? `<autoFilter ref="A4:${lastColumn}${allRows.length}"/>` : "";
+  const tabColor = sheet.tabColor ? `<sheetPr><tabColor rgb="${sheet.tabColor}"/></sheetPr>` : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      ${tabColor}
       <dimension ref="A1:${lastRef}"/>
       <sheetViews>
-        <sheetView workbookViewId="0">
+        <sheetView workbookViewId="0" showGridLines="0">
           <pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>
         </sheetView>
       </sheetViews>
@@ -270,11 +300,11 @@ function createXlsxWorkbook(sheets) {
     </Relationships>`;
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-      <fonts count="4"><font><sz val="10"/><name val="Arial"/><color rgb="FF0F172A"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="18"/><name val="Arial"/></font><font><color rgb="FFE0F2FE"/><sz val="10"/><name val="Arial"/></font></fonts>
-      <fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F766E"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF075985"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/><bgColor indexed="64"/></patternFill></fill></fills>
-      <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFE2E8F0"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border></borders>
+      <fonts count="7"><font><sz val="10"/><name val="Arial"/><color rgb="FF0F172A"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="18"/><name val="Arial"/></font><font><color rgb="FFE0F2FE"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF065F46"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF991B1B"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF92400E"/><sz val="10"/><name val="Arial"/></font></fonts>
+      <fills count="9"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF064E3B"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F766E"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCFCE7"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFEE2E2"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/><bgColor indexed="64"/></patternFill></fill></fills>
+      <borders count="3"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFE2E8F0"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border><border><left style="medium"><color rgb="FF0F766E"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border></borders>
       <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-      <cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>
+      <cellXfs count="12"><xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="4" fillId="6" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="5" fillId="7" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="6" fillId="8" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="4" borderId="2" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment vertical="center" wrapText="1"/></xf></cellXfs>
       <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
     </styleSheet>`;
   const now = new Date().toISOString();
@@ -359,7 +389,8 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       subtitle,
       headers: ["Indicador", "Valor", "Observacao"],
       rows: summaryRows,
-      columnWidths: [30, 28, 52]
+      columnWidths: [30, 28, 52],
+      tabColor: "FF064E3B"
     },
     {
       name: "Recorrencias",
@@ -367,7 +398,8 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       subtitle,
       headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"],
       rows: rankingRows,
-      columnWidths: [10, 28, 14, 14, 48]
+      columnWidths: [10, 28, 14, 14, 48],
+      tabColor: "FF0F766E"
     },
     {
       name: "Severidade",
@@ -375,7 +407,8 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       subtitle,
       headers: ["Posicao", "Severidade", "Quantidade", "Percentual"],
       rows: severityRows,
-      columnWidths: [10, 18, 14, 14]
+      columnWidths: [10, 18, 14, 14],
+      tabColor: "FFF59E0B"
     },
     {
       name: "Registro inspecoes",
@@ -383,7 +416,8 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       subtitle,
       headers: ["#", "Data", "Frota", "Placa", "Equipamento", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Maior severidade", "Categorias", "Locais", "Arquivos", "Evidencias", "Observacoes"],
       rows: inspectionRows,
-      columnWidths: [7, 20, 12, 14, 22, 18, 16, 24, 16, 18, 34, 34, 12, 46, 52]
+      columnWidths: [7, 20, 12, 14, 22, 18, 16, 24, 16, 18, 34, 34, 12, 46, 52],
+      tabColor: "FF0369A1"
     },
     {
       name: "Pontos criticos",
@@ -391,7 +425,8 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       subtitle,
       headers: ["#", "Data", "Frota", "Placa", "Status", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"],
       rows: pointRows,
-      columnWidths: [7, 20, 12, 14, 16, 24, 28, 14, 46, 46, 46]
+      columnWidths: [7, 20, 12, 14, 16, 24, 28, 14, 46, 46, 46],
+      tabColor: "FF7F1D1D"
     }
   ]);
   const blob = new Blob([workbook], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
