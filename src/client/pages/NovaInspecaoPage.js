@@ -202,7 +202,7 @@ export default function NovaInspecaoPage() {
     children: _jsxs("div", {
       className: "page-frame",
       children: [
-        _jsx(AppHeader, { title: "Nova inspecao", subtitle: "Crie a inspecao, inclua checklist, pontos criticos e fotos.", showBack: true }),
+        _jsx(AppHeader, { title: "Nova inspecao", subtitle: "Crie a inspecao, inclua checklist, pontos criticos, fotos e videos.", showBack: true }),
         error ? _jsx("p", { className: "notice notice--error", children: error }) : null,
         success ? _jsx("p", { className: "notice notice--success", children: success }) : null,
         _jsx(InspectionForm, {

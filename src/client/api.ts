@@ -221,7 +221,7 @@ export async function uploadFotos(inspecaoId: string, formData: FormData) {
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
-    throw new Error(error?.message ?? "Erro ao enviar fotos");
+    throw new Error(error?.message ?? "Erro ao enviar arquivos");
   }
 
   return response.json() as Promise<{ fotos: FotoInspecao[] }>;

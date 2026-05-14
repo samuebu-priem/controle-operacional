@@ -130,7 +130,7 @@ export async function openWhatsAppInspectionMessage(inspecao: WhatsAppInspection
   if (files.length > 0 && navigator.share) {
     const copied = await copyTextToClipboard(message);
     if (copied) {
-      window.alert("O texto da inspeção foi copiado. Depois de escolher o WhatsApp, cole o texto na mensagem junto com as fotos.");
+      window.alert("O texto da inspecao foi copiado. Depois de escolher o WhatsApp, cole o texto na mensagem junto com os arquivos.");
     }
 
     const shareData: FileShareData = {

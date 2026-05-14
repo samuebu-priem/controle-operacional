@@ -785,10 +785,13 @@ img {
   background: rgba(4, 9, 18, 0.72);
 }
 
-.photo-upload__item img {
+.photo-upload__item img,
+.photo-upload__item video {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
+  display: block;
+  background: rgba(2, 6, 18, 0.9);
 }
 
 .photo-upload__item figcaption {
@@ -886,10 +889,13 @@ img {
   background: rgba(4, 9, 18, 0.72);
 }
 
-.photo-preview-grid__item img {
+.photo-preview-grid__item img,
+.photo-preview-grid__item video {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
+  display: block;
+  background: rgba(2, 6, 18, 0.9);
 }
 
 .photo-preview-grid__meta {

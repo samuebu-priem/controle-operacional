@@ -187,7 +187,7 @@ function worksheetXml(sheet) {
     .map((row, rowIndex) => {
       const cells = Array.from({ length: maxColumns }, (_, colIndex) => {
           const ref = `${columnName(colIndex)}${rowIndex + 1}`;
-          const style = row.type === "section" ? ' s="2"' : row.type === "subtitle" ? ' s="3"' : row.type === "header" ? ' s="1"' : row.type === "blank" ? ' s="4"' : "";
+          const style = row.type === "section" ? ' s="2"' : row.type === "subtitle" ? ' s="3"' : row.type === "header" ? ' s="1"' : row.type === "blank" ? ' s="4"' : rowIndex % 2 === 0 ? ' s="5"' : "";
           const value = row.cells[colIndex] ?? "";
           if (typeof value === "number") {
             return `<c r="${ref}"${style}><v>${value}</v></c>`;
@@ -215,6 +215,7 @@ function worksheetXml(sheet) {
       <cols>${cols}</cols>
       <sheetData>${sheetRows}</sheetData>
       <mergeCells count="${mergeCells.length}">${mergeCells.join("")}</mergeCells>
+      <pageMargins left="0.4" right="0.4" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>
     </worksheet>`;
 }
 function createXlsxWorkbook(sheets) {
@@ -247,11 +248,11 @@ function createXlsxWorkbook(sheets) {
     </Relationships>`;
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-      <fonts count="4"><font><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF0F172A"/><sz val="16"/><name val="Arial"/></font><font><color rgb="FF475569"/><sz val="10"/><name val="Arial"/></font></fonts>
-      <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF075985"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE0F2FE"/><bgColor indexed="64"/></patternFill></fill></fills>
-      <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border></borders>
+      <fonts count="4"><font><sz val="10"/><name val="Arial"/><color rgb="FF0F172A"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="18"/><name val="Arial"/></font><font><color rgb="FFE0F2FE"/><sz val="10"/><name val="Arial"/></font></fonts>
+      <fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F766E"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF075985"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/><bgColor indexed="64"/></patternFill></fill></fills>
+      <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFE2E8F0"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border></borders>
       <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-      <cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf></cellXfs>
+      <cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>
       <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
     </styleSheet>`;
   const now = new Date().toISOString();
@@ -323,14 +324,29 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
   const subtitle = `Periodo: ${periodLabel} | Categoria: ${categoryLabel} | Gerado em: ${formatReportDate(/* @__PURE__ */ new Date())}`;
   const workbook = createXlsxWorkbook([
     {
-      name: "Relatorio",
+      name: "Resumo",
       sections: [
         { title: "Relatorio de Indicadores de Qualidade", subtitle, headers: ["Campo", "Valor"], rows: [["Relatorio", "Indicadores de Qualidade"], ["Periodo", periodLabel], ["Categoria", categoryLabel], ["Total de inspecoes", inspecoes.length], ["Total de ocorrencias", totalPoints]] },
-        { title: "Resumo executivo", subtitle: "", headers: ["Indicador", "Valor"], rows: summaryRows },
-        { title: "Ranking de recorrencias", subtitle: "", headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rows: rankingRows },
-        { title: "Distribuicao por severidade", subtitle: "", headers: ["Severidade", "Quantidade", "Percentual"], rows: severityRows },
-        { title: "Inspecoes analisadas", subtitle: "", headers: ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], rows: inspectionRows },
-        { title: "Detalhamento dos pontos criticos", subtitle: "", headers: ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], rows: pointRows }
+        { title: "Resumo executivo", subtitle: "", headers: ["Indicador", "Valor"], rows: summaryRows }
+      ]
+    },
+    {
+      name: "Recorrencias",
+      sections: [
+        { title: "Ranking de recorrencias", subtitle, headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rows: rankingRows },
+        { title: "Distribuicao por severidade", subtitle: "", headers: ["Severidade", "Quantidade", "Percentual"], rows: severityRows }
+      ]
+    },
+    {
+      name: "Inspecoes",
+      sections: [
+        { title: "Inspecoes analisadas", subtitle, headers: ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], rows: inspectionRows }
+      ]
+    },
+    {
+      name: "Pontos criticos",
+      sections: [
+        { title: "Detalhamento dos pontos criticos", subtitle, headers: ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], rows: pointRows }
       ]
     }
   ]);

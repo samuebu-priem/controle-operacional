@@ -3,6 +3,9 @@ import Button from "../ui/Button";
 import Input, { Textarea } from "../ui/Input";
 const severidades = ["LEVE", "MEDIA", "GRAVE"];
 const categoriasPontoCritico = ["Ferrugem", "Resquicio de produto", "Fuligem", "Amarelamento", "Mancha"];
+function isVideoFile(file) {
+  return file.type.startsWith("video/");
+}
 function CriticalPointForm({
   pontosCriticos,
   onAdd,
@@ -52,25 +55,28 @@ function CriticalPointForm({
       ),
       /* @__PURE__ */ jsxs("div", { className: "critical-point-form__photos", children: [
         /* @__PURE__ */ jsxs("label", { className: "input-field", children: [
-          /* @__PURE__ */ jsx("span", { className: "input-field__label", children: "Fotos do ponto cr\xEDtico" }),
+          /* @__PURE__ */ jsx("span", { className: "input-field__label", children: "Fotos e videos do ponto cr\xEDtico" }),
           /* @__PURE__ */ jsx(
             "input",
             {
               className: "input",
               type: "file",
-              accept: "image/*",
+              accept: "image/*,video/*",
               multiple: true,
               onChange: (event) => onChangeFiles(index, Array.from(event.target.files ?? []))
             }
           )
         ] }),
-        ponto.files.length > 0 ? /* @__PURE__ */ jsx("div", { className: "photo-preview-grid", children: ponto.files.map((file, fileIndex) => /* @__PURE__ */ jsxs("div", { className: "photo-preview-grid__item", children: [
-          /* @__PURE__ */ jsx("img", { src: URL.createObjectURL(file), alt: file.name }),
+        ponto.files.length > 0 ? /* @__PURE__ */ jsx("div", { className: "photo-preview-grid", children: ponto.files.map((file, fileIndex) => {
+          const previewUrl = URL.createObjectURL(file);
+          return /* @__PURE__ */ jsxs("div", { className: "photo-preview-grid__item", children: [
+          isVideoFile(file) ? /* @__PURE__ */ jsx("video", { src: previewUrl, controls: true, muted: true, playsInline: true }) : /* @__PURE__ */ jsx("img", { src: previewUrl, alt: file.name }),
           /* @__PURE__ */ jsxs("div", { className: "photo-preview-grid__meta", children: [
             /* @__PURE__ */ jsx("span", { children: file.name }),
             /* @__PURE__ */ jsx(Button, { variant: "ghost", type: "button", onClick: () => onRemoveFile(index, fileIndex), children: "Remover" })
           ] })
-        ] }, `${file.name}-${fileIndex}`)) }) : null
+        ] }, `${file.name}-${fileIndex}`);
+        }) }) : null
       ] }),
       /* @__PURE__ */ jsx("div", { className: "critical-point-form__actions", children: /* @__PURE__ */ jsx(Button, { variant: "ghost", type: "button", onClick: () => onRemove(index), children: "Remover ponto cr\xEDtico" }) })
     ] }, index))

@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import sharp from "sharp";
 import { prisma } from "../../lib/prisma";
 import { AppError } from "../../middleware/errorHandler";
@@ -19,12 +20,12 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: {
-    fileSize: 8 * 1024 * 1024,
+    fileSize: 80 * 1024 * 1024,
     files: 20
   },
   fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith("image/")) {
-      cb(new AppError("Somente arquivos de imagem são permitidos", 400, "BAD_REQUEST") as unknown as Error);
+    if (!file.mimetype.startsWith("image/") && !file.mimetype.startsWith("video/")) {
+      cb(new AppError("Somente arquivos de imagem ou video sao permitidos", 400, "BAD_REQUEST") as unknown as Error);
       return;
     }
 
@@ -42,6 +43,13 @@ function buildCompressedFileName(originalName: string) {
   const parsed = path.parse(originalName);
   const baseName = (parsed.name || "foto").replace(/[^\w.-]+/g, "_");
   return `${Date.now()}-${Math.round(Math.random() * 1e9)}-${baseName}.jpg`;
+}
+
+function buildMediaFileName(originalName: string, extension?: string) {
+  const parsed = path.parse(originalName);
+  const baseName = (parsed.name || "midia").replace(/[^\w.-]+/g, "_");
+  const ext = (extension || parsed.ext || ".bin").toLowerCase();
+  return `${Date.now()}-${Math.round(Math.random() * 1e9)}-${baseName}${ext.startsWith(".") ? ext : `.${ext}`}`;
 }
 
 async function compressAndSaveImage(file: Express.Multer.File) {
@@ -68,6 +76,75 @@ async function compressAndSaveImage(file: Express.Multer.File) {
   };
 }
 
+function runFfmpeg(inputPath: string, outputPath: string) {
+  return new Promise<void>((resolve, reject) => {
+    const ffmpeg = spawn("ffmpeg", [
+      "-y",
+      "-i",
+      inputPath,
+      "-vf",
+      "scale=min(1280\\,iw):-2",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "28",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-movflags",
+      "+faststart",
+      outputPath
+    ], {
+      windowsHide: true,
+      stdio: "ignore"
+    });
+
+    ffmpeg.once("error", reject);
+    ffmpeg.once("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error("Falha ao comprimir video"));
+      }
+    });
+  });
+}
+
+async function saveVideo(file: Express.Multer.File) {
+  const originalFilename = buildMediaFileName(file.originalname);
+  const originalPath = path.join(uploadsDir, originalFilename);
+  await fs.promises.writeFile(originalPath, file.buffer);
+
+  const compressedFilename = buildMediaFileName(file.originalname, ".mp4");
+  const compressedPath = path.join(uploadsDir, compressedFilename);
+
+  try {
+    await runFfmpeg(originalPath, compressedPath);
+    await fs.promises.unlink(originalPath).catch(() => undefined);
+    return {
+      filename: compressedFilename,
+      filePath: compressedPath
+    };
+  } catch {
+    await fs.promises.unlink(compressedPath).catch(() => undefined);
+    return {
+      filename: originalFilename,
+      filePath: originalPath
+    };
+  }
+}
+
+async function processAndSaveMedia(file: Express.Multer.File) {
+  if (file.mimetype.startsWith("image/")) {
+    return compressAndSaveImage(file);
+  }
+
+  return saveVideo(file);
+}
+
 function removeFiles(filePaths: string[]) {
   for (const filePath of filePaths) {
     if (fs.existsSync(filePath)) {
@@ -91,7 +168,7 @@ fotoRoutes.post(
 
       const files = (req.files as Express.Multer.File[] | undefined) ?? [];
       if (files.length === 0) {
-        throw new AppError("Nenhuma imagem enviada", 400, "BAD_REQUEST");
+        throw new AppError("Nenhum arquivo enviado", 400, "BAD_REQUEST");
       }
 
       const legendas = normalizeArray(req.body.legenda);
@@ -100,7 +177,7 @@ fotoRoutes.post(
 
       try {
         for (const file of files) {
-          compressedFiles.push(await compressAndSaveImage(file));
+          compressedFiles.push(await processAndSaveMedia(file));
         }
 
         const fotos = await prisma.$transaction(async (tx: typeof prisma) => {
