@@ -170,9 +170,18 @@ function columnName(index) {
   return name;
 }
 function buildTableSheetRows(sheet) {
+  const generatedAt = sheet.generatedAt || formatReportDate(/* @__PURE__ */ new Date());
+  const totalRecords = sheet.recordCount ?? sheet.rows.length;
+  const context = sheet.context || [];
+  const kpis = sheet.kpis || [];
   const rows = [
-    { type: "section", cells: [sheet.title || sheet.name] },
-    { type: "subtitle", cells: [sheet.subtitle || ""] },
+    { type: "brand", cells: ["CONTROLE OPERACIONAL", "Relatorio corporativo"] },
+    { type: "title", cells: [sheet.title || sheet.name] },
+    { type: "meta", cells: [`Exportado em ${generatedAt}`, `Registros: ${totalRecords}`, "Responsavel: Usuario do sistema"] },
+    { type: "context", cells: [context.length > 0 ? context.join(" | ") : sheet.subtitle || ""] },
+    { type: "blank", cells: [] },
+    { type: "kpiLabel", cells: kpis.map((kpi) => kpi.label) },
+    { type: "kpiValue", cells: kpis.map((kpi) => kpi.value) },
     { type: "blank", cells: [] },
     { type: "header", cells: sheet.headers }
   ];
@@ -180,33 +189,78 @@ function buildTableSheetRows(sheet) {
   bodyRows.forEach((row) => rows.push({ type: "data", cells: row }));
   return rows;
 }
-function getCellStyle(row, rowIndex, colIndex, sheet) {
-  if (row.type === "section") return ' s="2"';
-  if (row.type === "subtitle") return ' s="3"';
-  if (row.type === "header") return ' s="1"';
-  if (row.type === "blank") return ' s="4"';
+function normalizeKey(value) {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+function isDateHeader(header) {
+  const key = normalizeKey(header);
+  return key.includes("DATA") || key.includes("GERADO") || key.includes("HORA");
+}
+function isMoneyHeader(header) {
+  const key = normalizeKey(header);
+  return key.includes("VALOR") || key.includes("FATUR") || key.includes("PRECO") || key.includes("CUSTO") || key.includes("RECEITA");
+}
+function isPercentHeader(header) {
+  return normalizeKey(header).includes("PERCENTUAL") || normalizeKey(header).includes("%");
+}
+function isIntegerHeader(header) {
+  const key = normalizeKey(header);
+  return ["#", "POSICAO", "OCORRENCIAS", "ARQUIVOS", "PONTOS CRITICOS", "QUANTIDADE"].includes(key) || key.includes("TOTAL") || key.includes("QTD");
+}
+function parsePercent(value) {
+  if (typeof value === "number") return value > 1 ? value / 100 : value;
+  const match = String(value ?? "").trim().replace(",", ".").match(/^(-?\d+(?:\.\d+)?)%$/);
+  return match ? Number(match[1]) / 100 : null;
+}
+function excelSerialDate(value) {
+  const stringValue = String(value ?? "").trim();
+  const brDate = stringValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,\s*(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  let date = null;
+  if (brDate) {
+    date = new Date(Number(brDate[3]), Number(brDate[2]) - 1, Number(brDate[1]), Number(brDate[4] ?? 0), Number(brDate[5] ?? 0), Number(brDate[6] ?? 0));
+  } else if (value instanceof Date || /^\d{4}-\d{2}-\d{2}/.test(stringValue)) {
+    date = new Date(value);
+  }
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return date.getTime() / 86400000 + 25569;
+}
+function getStatusStyle(normalizedValue) {
+  if (["APROVADO", "ACTIVE", "OK", "CONCLUIDO"].includes(normalizedValue)) return 13;
+  if (["REPROVADO", "FAILED", "GRAVE", "CRITICO"].includes(normalizedValue)) return 14;
+  if (["COM_OBSERVACAO", "PENDING", "MEDIA", "ATENCAO"].includes(normalizedValue)) return 15;
+  if (["CANCELED", "CANCELADO", "INATIVO", "SEM PONTO CRITICO"].includes(normalizedValue)) return 16;
+  if (["LEVE", "BAIXO"].includes(normalizedValue)) return 13;
+  return null;
+}
+function getCellStyleId(row, rowIndex, colIndex, sheet) {
+  if (row.type === "brand") return colIndex === 0 ? 1 : 2;
+  if (row.type === "title") return 3;
+  if (row.type === "meta") return 4;
+  if (row.type === "context") return 5;
+  if (row.type === "kpiLabel") return 6;
+  if (row.type === "kpiValue") return 7;
+  if (row.type === "header") return 8;
+  if (row.type === "blank") return 9;
+  if (row.type === "section") return 3;
+  if (row.type === "subtitle") return 5;
 
   const header = sheet.headers?.[colIndex] ?? "";
   const value = row.cells[colIndex];
-  const normalizedValue = String(value ?? "").toUpperCase();
-  const isCentered = typeof value === "number" || ["#", "POSICAO", "OCORRENCIAS", "PERCENTUAL", "ARQUIVOS", "PONTOS CRITICOS", "QUANTIDADE"].includes(header.toUpperCase());
+  const normalizedValue = normalizeKey(value);
   const isZebra = rowIndex % 2 === 0;
-
-  if (header === "Status") {
-    if (normalizedValue === "APROVADO") return ' s="8"';
-    if (normalizedValue === "REPROVADO") return ' s="9"';
-    if (normalizedValue === "COM_OBSERVACAO") return ' s="10"';
+  const badgeStyle = getStatusStyle(normalizedValue);
+  if (normalizeKey(header).includes("STATUS") || normalizeKey(header).includes("SEVERIDADE") || header === "Maior severidade") {
+    if (badgeStyle) return badgeStyle;
   }
-
-  if (header.includes("Severidade") || header === "Maior severidade") {
-    if (normalizedValue === "GRAVE") return ' s="9"';
-    if (normalizedValue === "MEDIA") return ' s="10"';
-    if (normalizedValue === "LEVE") return ' s="8"';
-  }
-
-  if ((sheet.name === "Painel" && header === "Resultado") || (sheet.name === "Resumo dados" && header === "Valor")) return ' s="11"';
-  if (isCentered) return isZebra ? ' s="7"' : ' s="6"';
-  return isZebra ? ' s="5"' : "";
+  if (isDateHeader(header) && excelSerialDate(value) !== null) return isZebra ? 21 : 20;
+  if (isPercentHeader(header) && parsePercent(value) !== null) return isZebra ? 23 : 22;
+  if (isMoneyHeader(header) && typeof value === "number") return isZebra ? 25 : 24;
+  if (typeof value === "number" || isIntegerHeader(header)) return isZebra ? 19 : 18;
+  if ((sheet.name === "Painel" && header === "Resultado") || (sheet.name === "Resumo dados" && header === "Valor")) return 17;
+  return isZebra ? 11 : 10;
+}
+function getCellStyle(row, rowIndex, colIndex, sheet) {
+  return ` s="${getCellStyleId(row, rowIndex, colIndex, sheet)}"`;
 }
 function buildSingleSheetRows(sections) {
   const rows = [];
@@ -223,11 +277,16 @@ function buildSingleSheetRows(sections) {
 function worksheetXml(sheet) {
   const isTableSheet = Boolean(sheet.headers);
   const allRows = isTableSheet ? buildTableSheetRows(sheet) : buildSingleSheetRows(sheet.sections);
-  const maxColumns = isTableSheet ? sheet.headers.length : Math.max(...sheet.sections.map((section) => section.headers.length));
+  const maxColumns = Math.max(
+    isTableSheet ? sheet.headers.length : Math.max(...sheet.sections.map((section) => section.headers.length)),
+    sheet.kpis?.length ?? 0,
+    sheet.context?.length ?? 0,
+    4
+  );
   const cols = Array.from({ length: maxColumns }, (_, index) => {
       const values = allRows.map((row) => row.cells[index] ?? "");
       const preferredWidth = sheet.columnWidths?.[index];
-      const width = preferredWidth ?? Math.min(58, Math.max(12, ...values.map((value) => String(value).length + 2)));
+      const width = preferredWidth ?? Math.min(58, Math.max(12, ...values.map((value) => String(value).length + 4)));
       return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`;
     })
     .join("");
@@ -236,39 +295,128 @@ function worksheetXml(sheet) {
       const cells = Array.from({ length: maxColumns }, (_, colIndex) => {
           const ref = `${columnName(colIndex)}${rowIndex + 1}`;
           const style = getCellStyle(row, rowIndex, colIndex, sheet);
+          const header = sheet.headers?.[colIndex] ?? "";
           const value = row.cells[colIndex] ?? "";
           if (typeof value === "number") {
             return `<c r="${ref}"${style}><v>${value}</v></c>`;
           }
+          const dateValue = row.type === "data" && isDateHeader(header) ? excelSerialDate(value) : null;
+          if (dateValue !== null) return `<c r="${ref}"${style}><v>${dateValue}</v></c>`;
+          const percentValue = row.type === "data" && isPercentHeader(header) ? parsePercent(value) : null;
+          if (percentValue !== null) return `<c r="${ref}"${style}><v>${percentValue}</v></c>`;
           return `<c r="${ref}" t="inlineStr"${style}><is><t>${escapeHtml(value)}</t></is></c>`;
         })
         .join("");
-      const height = row.type === "section" ? ' ht="26" customHeight="1"' : row.type === "subtitle" ? ' ht="20" customHeight="1"' : row.type === "header" ? ' ht="24" customHeight="1"' : "";
+      const height = row.type === "brand" ? ' ht="30" customHeight="1"' : row.type === "title" ? ' ht="38" customHeight="1"' : row.type === "meta" || row.type === "context" ? ' ht="24" customHeight="1"' : row.type === "kpiLabel" ? ' ht="22" customHeight="1"' : row.type === "kpiValue" ? ' ht="34" customHeight="1"' : row.type === "section" ? ' ht="30" customHeight="1"' : row.type === "subtitle" ? ' ht="22" customHeight="1"' : row.type === "header" ? ' ht="28" customHeight="1"' : row.type === "data" ? ' ht="24" customHeight="1"' : "";
       return `<row r="${rowIndex + 1}"${height}>${cells}</row>`;
     })
     .join("");
   const lastColumn = columnName(maxColumns - 1);
   const lastRef = `${lastColumn}${allRows.length}`;
   const mergeCells = allRows
-    .map((row, index) => (row.type === "section" || row.type === "subtitle" ? `<mergeCell ref="A${index + 1}:${lastColumn}${index + 1}"/>` : ""))
+    .map((row, index) => (["brand", "title", "context", "section", "subtitle"].includes(row.type) ? `<mergeCell ref="A${index + 1}:${lastColumn}${index + 1}"/>` : ""))
     .filter(Boolean);
-  const filterRef = isTableSheet ? `<autoFilter ref="A4:${lastColumn}${allRows.length}"/>` : "";
+  const filterStart = isTableSheet ? allRows.findIndex((row) => row.type === "header") + 1 : 0;
+  const filterRef = isTableSheet ? `<autoFilter ref="A${filterStart}:${lastColumn}${allRows.length}"/>` : "";
   const tabColor = sheet.tabColor ? `<sheetPr><tabColor rgb="${sheet.tabColor}"/></sheetPr>` : "";
+  const freezeRow = isTableSheet ? filterStart + 1 : 5;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
       ${tabColor}
       <dimension ref="A1:${lastRef}"/>
       <sheetViews>
         <sheetView workbookViewId="0" showGridLines="0">
-          <pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>
+          <pane ySplit="${freezeRow - 1}" topLeftCell="A${freezeRow}" activePane="bottomLeft" state="frozen"/>
         </sheetView>
       </sheetViews>
+      <sheetFormatPr defaultRowHeight="22"/>
       <cols>${cols}</cols>
       <sheetData>${sheetRows}</sheetData>
       ${filterRef}
       <mergeCells count="${mergeCells.length}">${mergeCells.join("")}</mergeCells>
-      <pageMargins left="0.4" right="0.4" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>
+      <printOptions horizontalCentered="1"/>
+      <pageMargins left="0.35" right="0.35" top="0.55" bottom="0.55" header="0.25" footer="0.25"/>
+      <pageSetup orientation="${maxColumns > 8 ? "landscape" : "portrait"}" fitToWidth="1" fitToHeight="0"/>
     </worksheet>`;
+}
+function buildWorkbookStyles() {
+  const fonts = [
+    '<font><sz val="10"/><name val="Aptos"/><color rgb="FF111827"/></font>',
+    '<font><b/><sz val="11"/><name val="Aptos"/><color rgb="FFFFFFFF"/></font>',
+    '<font><b/><sz val="22"/><name val="Aptos Display"/><color rgb="FFFFFFFF"/></font>',
+    '<font><sz val="10"/><name val="Aptos"/><color rgb="FFE2E8F0"/></font>',
+    '<font><b/><sz val="9"/><name val="Aptos"/><color rgb="FF64748B"/></font>',
+    '<font><b/><sz val="18"/><name val="Aptos Display"/><color rgb="FF0F172A"/></font>',
+    '<font><b/><sz val="10"/><name val="Aptos"/><color rgb="FF0F172A"/></font>',
+    '<font><b/><sz val="10"/><name val="Aptos"/><color rgb="FF166534"/></font>',
+    '<font><b/><sz val="10"/><name val="Aptos"/><color rgb="FF991B1B"/></font>',
+    '<font><b/><sz val="10"/><name val="Aptos"/><color rgb="FF92400E"/></font>',
+    '<font><b/><sz val="10"/><name val="Aptos"/><color rgb="FF475569"/></font>',
+    '<font><b/><sz val="12"/><name val="Aptos"/><color rgb="FF0369A1"/></font>'
+  ].join("");
+  const fills = [
+    '<fill><patternFill patternType="none"/></fill>',
+    '<fill><patternFill patternType="gray125"/></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FF0F172A"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FF1E293B"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFEFF6FF"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFDCFCE7"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFEE2E2"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/><bgColor indexed="64"/></patternFill></fill>',
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFE0F2FE"/><bgColor indexed="64"/></patternFill></fill>'
+  ].join("");
+  const borders = [
+    '<border><left/><right/><top/><bottom/><diagonal/></border>',
+    '<border><left style="thin"><color rgb="FFE2E8F0"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border>',
+    '<border><left style="medium"><color rgb="FF0EA5E9"/></left><right style="thin"><color rgb="FFBAE6FD"/></right><top style="thin"><color rgb="FFBAE6FD"/></top><bottom style="thin"><color rgb="FFBAE6FD"/></bottom><diagonal/></border>',
+    '<border><left style="thin"><color rgb="FF86EFAC"/></left><right style="thin"><color rgb="FF86EFAC"/></right><top style="thin"><color rgb="FF86EFAC"/></top><bottom style="thin"><color rgb="FF86EFAC"/></bottom><diagonal/></border>',
+    '<border><left style="thin"><color rgb="FFFCA5A5"/></left><right style="thin"><color rgb="FFFCA5A5"/></right><top style="thin"><color rgb="FFFCA5A5"/></top><bottom style="thin"><color rgb="FFFCA5A5"/></bottom><diagonal/></border>',
+    '<border><left style="thin"><color rgb="FFFCD34D"/></left><right style="thin"><color rgb="FFFCD34D"/></right><top style="thin"><color rgb="FFFCD34D"/></top><bottom style="thin"><color rgb="FFFCD34D"/></bottom><diagonal/></border>',
+    '<border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border>'
+  ].join("");
+  const xfs = [
+    '<xf numFmtId="0" fontId="0" fillId="5" borderId="0" xfId="0"/>',
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="3" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="6" fillId="4" borderId="2" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="4" fillId="6" borderId="6" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="5" fillId="5" borderId="6" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="1" fillId="3" borderId="6" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
+    '<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="7" fillId="8" borderId="3" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="8" fillId="9" borderId="4" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="9" fillId="10" borderId="5" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="10" fillId="11" borderId="6" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="11" fillId="12" borderId="2" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="1" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="1" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="164" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="164" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="10" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="10" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="165" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="165" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="right" vertical="center"/></xf>'
+  ].join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+      <numFmts count="2"><numFmt numFmtId="164" formatCode="dd/mm/yyyy hh:mm"/><numFmt numFmtId="165" formatCode="R$ #,##0.00"/></numFmts>
+      <fonts count="12">${fonts}</fonts>
+      <fills count="13">${fills}</fills>
+      <borders count="7">${borders}</borders>
+      <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+      <cellXfs count="26">${xfs}</cellXfs>
+      <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+      <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
+    </styleSheet>`;
 }
 function createXlsxWorkbook(sheets) {
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -298,15 +446,7 @@ function createXlsxWorkbook(sheets) {
       ${sheets.map((_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}
       <Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
     </Relationships>`;
-  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-    <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-      <fonts count="7"><font><sz val="10"/><name val="Arial"/><color rgb="FF111827"/></font><font><b/><color rgb="FF111827"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF111827"/><sz val="18"/><name val="Arial"/></font><font><color rgb="FF334155"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF065F46"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF991B1B"/><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FF92400E"/><sz val="10"/><name val="Arial"/></font></fonts>
-      <fills count="9"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE0F2FE"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFCCFBF1"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCFCE7"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFEE2E2"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/><bgColor indexed="64"/></patternFill></fill></fills>
-      <borders count="3"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border><border><left style="medium"><color rgb="FF0F766E"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border></borders>
-      <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-      <cellXfs count="12"><xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="4" borderId="0" xfId="0" applyFill="1" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="4" fillId="6" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="5" fillId="7" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="6" fillId="8" borderId="1" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="4" borderId="2" xfId="0" applyFill="1" applyFont="1" applyAlignment="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs>
-      <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
-    </styleSheet>`;
+  const styles = buildWorkbookStyles();
   const now = new Date().toISOString();
   const core = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>Relatorio de Indicadores de Qualidade</dc:title><dc:creator>Controle Operacional</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`;
   const app = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Controle Operacional</Application></Properties>`;
@@ -391,12 +531,27 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
     ...analytics.severityItems.map((item) => ["Severidade", item.label, `${Math.round(item.percentage)}%`, `${item.count} ocorrencias`])
   ];
   const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const subtitle = `Periodo: ${periodLabel} | Categoria: ${categoryLabel} | Gerado em: ${formatReportDate(/* @__PURE__ */ new Date())}`;
+  const generatedAt = formatReportDate(/* @__PURE__ */ new Date());
+  const subtitle = `Periodo: ${periodLabel} | Categoria: ${categoryLabel} | Gerado em: ${generatedAt}`;
+  const criticalRate = inspecoes.length > 0 ? Math.round(analytics.withCriticalPoints / inspecoes.length * 100) : 0;
+  const leadingRecurrence = analytics.items[0]?.label ?? "Sem recorrencia";
+  const commonContext = [`Periodo: ${periodLabel}`, `Categoria: ${categoryLabel}`, `Base: ${inspecoes.length} inspecoes`];
+  const executiveKpis = [
+    { label: "Inspecoes", value: inspecoes.length },
+    { label: "Com ponto critico", value: analytics.withCriticalPoints },
+    { label: "Ocorrencias", value: totalPoints },
+    { label: "Taxa critica", value: `${criticalRate}%` },
+    { label: "Recorrencia lider", value: leadingRecurrence }
+  ];
   const workbook = createXlsxWorkbook([
     {
       name: "Painel",
       title: "Painel executivo de qualidade",
       subtitle,
+      generatedAt,
+      recordCount: dashboardRows.length,
+      context: commonContext,
+      kpis: executiveKpis,
       headers: ["Bloco", "Indicador", "Resultado", "Leitura"],
       rows: dashboardRows,
       columnWidths: [24, 34, 24, 56],
@@ -406,6 +561,14 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       name: "Resumo dados",
       title: "Resumo dos dados do relatorio",
       subtitle,
+      generatedAt,
+      recordCount: summaryRows.length,
+      context: commonContext,
+      kpis: [
+        { label: "Total inspecoes", value: inspecoes.length },
+        { label: "Pontos criticos", value: totalPoints },
+        { label: "Taxa critica", value: `${criticalRate}%` }
+      ],
       headers: ["Indicador", "Valor", "Observacao"],
       rows: summaryRows,
       columnWidths: [30, 28, 52],
@@ -415,6 +578,14 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       name: "Recorrencias",
       title: "Ranking de recorrencias",
       subtitle,
+      generatedAt,
+      recordCount: rankingRows.length,
+      context: commonContext,
+      kpis: [
+        { label: "Categorias", value: rankingRows.length },
+        { label: "Ocorrencias", value: totalPoints },
+        { label: "Lider", value: leadingRecurrence }
+      ],
       headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"],
       rows: rankingRows,
       columnWidths: [10, 28, 14, 14, 48],
@@ -424,6 +595,14 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       name: "Severidade",
       title: "Distribuicao por severidade",
       subtitle,
+      generatedAt,
+      recordCount: severityRows.length,
+      context: commonContext,
+      kpis: [
+        { label: "Leve", value: severityRows.find((row) => row[1] === "LEVE")?.[2] ?? 0 },
+        { label: "Media", value: severityRows.find((row) => row[1] === "MEDIA")?.[2] ?? 0 },
+        { label: "Grave", value: severityRows.find((row) => row[1] === "GRAVE")?.[2] ?? 0 }
+      ],
       headers: ["Posicao", "Severidade", "Quantidade", "Percentual"],
       rows: severityRows,
       columnWidths: [10, 18, 14, 14],
@@ -433,6 +612,15 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       name: "Registro inspecoes",
       title: "Registro de inspecoes analisadas",
       subtitle,
+      generatedAt,
+      recordCount: inspectionRows.length,
+      context: commonContext,
+      kpis: [
+        { label: "Registros", value: inspectionRows.length },
+        { label: "Com evidencias", value: inspectionRows.filter((row) => row[12] > 0).length },
+        { label: "Com ponto critico", value: analytics.withCriticalPoints },
+        { label: "Taxa critica", value: `${criticalRate}%` }
+      ],
       headers: ["#", "Data", "Frota", "Placa", "Equipamento", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Maior severidade", "Categorias", "Locais", "Arquivos", "Evidencias", "Observacoes"],
       rows: inspectionRows,
       columnWidths: [7, 20, 12, 14, 22, 18, 16, 24, 16, 18, 34, 34, 12, 46, 52],
@@ -442,6 +630,14 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       name: "Pontos criticos",
       title: "Detalhamento dos pontos criticos",
       subtitle,
+      generatedAt,
+      recordCount: pointRows.length,
+      context: commonContext,
+      kpis: [
+        { label: "Pontos criticos", value: pointRows.length },
+        { label: "Inspecoes afetadas", value: analytics.withCriticalPoints },
+        { label: "Recorrencia lider", value: leadingRecurrence }
+      ],
       headers: ["#", "Data", "Frota", "Placa", "Status", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"],
       rows: pointRows,
       columnWidths: [7, 20, 12, 14, 16, 24, 28, 14, 46, 46, 46],
