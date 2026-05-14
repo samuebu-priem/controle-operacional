@@ -543,22 +543,6 @@ function QualityIndicatorsCard({ inspecoes }) {
   const totalInspecoes = filteredInspecoes.length;
   const topIssues = useMemo(() => buildQualityAnalytics(filteredInspecoes, category), [filteredInspecoes, category]);
   const leadingIssue = topIssues.items[0]?.label ?? "\u2014";
-  const periodLabel = period === "CUSTOM" ? `${customStart || "inicio"} a ${customEnd || "fim"}` : PERIOD_LABELS[period];
-  const categoryLabel = category === "ALL" ? "Todas as categorias" : category;
-  const reportRows = useMemo(() => filteredInspecoes.slice(0, 8).map((inspecao) => {
-    const points = getMatchingPoints(inspecao, category);
-    return {
-      id: inspecao.id,
-      data: formatReportDate(inspecao.dataInspecao),
-      frota: inspecao.frota?.numeroFrota ?? inspecao.frotaId ?? "",
-      placa: inspecao.frota?.placa ?? "",
-      status: inspecao.status,
-      inspetor: inspecao.nomeInspetor,
-      pontos: points.length,
-      severidade: points.length > 0 ? getHighestSeverity(points) : "Sem ponto critico",
-      categorias: joinUnique(points.map((ponto) => normalizeLabel(ponto.categoria)), "Sem ponto critico")
-    };
-  }), [filteredInspecoes, category]);
   function openIssuePage(item) {
     const params = new URLSearchParams();
     params.set("labels", (item.labels ?? [item.label]).join("|"));
@@ -582,8 +566,7 @@ function QualityIndicatorsCard({ inspecoes }) {
   return /* @__PURE__ */ jsxs("section", { className: "quality-section", children: [
     /* @__PURE__ */ jsx("div", { className: "section-head quality-section__head", children: /* @__PURE__ */ jsxs("div", { children: [
       /* @__PURE__ */ jsx("p", { className: "card-label", children: "Indicadores de Qualidade" }),
-      /* @__PURE__ */ jsx("h2", { className: "section-title", children: "Relatorio de qualidade operacional" }),
-      /* @__PURE__ */ jsx("p", { className: "section-description", children: "Resumo visual das recorrencias, severidade e ultimas inspecoes analisadas." })
+      /* @__PURE__ */ jsx("h2", { className: "section-title", children: "Recorr\xEAncias encontradas nas inspe\xE7\xF5es" })
     ] }) }),
     /* @__PURE__ */ jsxs(Card, { className: "quality-card card--elevated", children: [
       /* @__PURE__ */ jsxs("div", { className: "quality-toolbar", children: [
@@ -647,14 +630,6 @@ function QualityIndicatorsCard({ inspecoes }) {
         ] }),
         /* @__PURE__ */ jsx("div", { className: "quality-export-action", children: /* @__PURE__ */ jsx(Button, { type: "button", variant: "secondary", onClick: handleExportReport, children: "Exportar relatorio" }) })
       ] }),
-      /* @__PURE__ */ jsxs("div", { className: "quality-report-heading", children: [
-        /* @__PURE__ */ jsxs("div", { children: [
-          /* @__PURE__ */ jsx("p", { className: "card-label", children: "Relatorio em tela" }),
-          /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Pizza de recorrencias por categoria" }),
-          /* @__PURE__ */ jsxs("p", { className: "helper", children: ["Periodo: ", periodLabel, " | Categoria: ", categoryLabel] })
-        ] }),
-        /* @__PURE__ */ jsx(Button, { type: "button", variant: "secondary", onClick: handleExportReport, children: "Baixar Excel" })
-      ] }),
       /* @__PURE__ */ jsxs("div", { className: "quality-kpis", children: [
         /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
           /* @__PURE__ */ jsx("span", { children: "Total inspe\xE7\xF5es" }),
@@ -669,7 +644,7 @@ function QualityIndicatorsCard({ inspecoes }) {
           /* @__PURE__ */ jsx("strong", { children: leadingIssue })
         ] })
       ] }),
-      /* @__PURE__ */ jsxs("div", { className: "quality-layout quality-layout--report", children: [
+      /* @__PURE__ */ jsxs("div", { className: "quality-layout", children: [
         /* @__PURE__ */ jsxs("div", { className: "quality-chart-panel", children: [
           topIssues.items.length > 0 ? /* @__PURE__ */ jsx(DonutChart, { items: topIssues.items }) : /* @__PURE__ */ jsx("p", { className: "helper", children: "Sem ocorr\xEAncias no per\xEDodo." }),
           /* @__PURE__ */ jsx("div", { className: "quality-legend", children: topIssues.items.map((item) => /* @__PURE__ */ jsxs("div", { className: "quality-legend__item", children: [
@@ -684,9 +659,7 @@ function QualityIndicatorsCard({ inspecoes }) {
           ] }, item.label)) })
         ] }),
         /* @__PURE__ */ jsxs("div", { className: "quality-ranking", children: [
-          /* @__PURE__ */ jsx("p", { className: "card-label", children: "Tabela resumo" }),
-          /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Top recorrencias" }),
-          /* @__PURE__ */ jsx("p", { className: "helper", children: "Categorias mais repetidas nas inspeções filtradas." }),
+          /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Top recorr\xEAncias" }),
           /* @__PURE__ */ jsxs("div", { className: "quality-ranking__list", children: [
             topIssues.items.map((item, index) => /* @__PURE__ */ jsxs("div", { className: "quality-ranking__item", style: { "--issue-color": item.color }, children: [
               /* @__PURE__ */ jsx("span", { className: "quality-ranking__position", children: index + 1 }),
@@ -714,38 +687,6 @@ function QualityIndicatorsCard({ inspecoes }) {
             ] }, item.label)) })
           ] }),
         ] })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { className: "quality-table-panel", children: [
-        /* @__PURE__ */ jsxs("div", { className: "quality-table-panel__head", children: [
-          /* @__PURE__ */ jsxs("div", { children: [
-            /* @__PURE__ */ jsx("p", { className: "card-label", children: "Registro de inspecoes" }),
-            /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Inspecoes consideradas no relatorio" }),
-            /* @__PURE__ */ jsx("p", { className: "helper", children: "Mostrando as inspeções mais recentes do filtro atual." })
-          ] }),
-          /* @__PURE__ */ jsxs("span", { className: "quality-table-panel__count", children: [filteredInspecoes.length, " registros"] })
-        ] }),
-        /* @__PURE__ */ jsx("div", { className: "quality-table-wrap", children: /* @__PURE__ */ jsxs("table", { className: "quality-report-table", children: [
-          /* @__PURE__ */ jsx("thead", { children: /* @__PURE__ */ jsxs("tr", { children: [
-            /* @__PURE__ */ jsx("th", { children: "Data" }),
-            /* @__PURE__ */ jsx("th", { children: "Frota" }),
-            /* @__PURE__ */ jsx("th", { children: "Placa" }),
-            /* @__PURE__ */ jsx("th", { children: "Status" }),
-            /* @__PURE__ */ jsx("th", { children: "Pontos" }),
-            /* @__PURE__ */ jsx("th", { children: "Severidade" }),
-            /* @__PURE__ */ jsx("th", { children: "Categorias" }),
-            /* @__PURE__ */ jsx("th", { children: "Inspetor" })
-          ] }) }),
-          /* @__PURE__ */ jsx("tbody", { children: reportRows.length > 0 ? reportRows.map((row) => /* @__PURE__ */ jsxs("tr", { children: [
-            /* @__PURE__ */ jsx("td", { children: row.data }),
-            /* @__PURE__ */ jsx("td", { children: row.frota }),
-            /* @__PURE__ */ jsx("td", { children: row.placa }),
-            /* @__PURE__ */ jsx("td", { children: /* @__PURE__ */ jsx("span", { className: `quality-pill quality-pill--${row.status.toLowerCase()}`, children: row.status }) }),
-            /* @__PURE__ */ jsx("td", { className: "quality-report-table__number", children: row.pontos }),
-            /* @__PURE__ */ jsx("td", { children: /* @__PURE__ */ jsx("span", { className: `quality-pill quality-pill--${row.severidade.toLowerCase().replaceAll(" ", "-")}`, children: row.severidade }) }),
-            /* @__PURE__ */ jsx("td", { children: row.categorias }),
-            /* @__PURE__ */ jsx("td", { children: row.inspetor })
-          ] }, row.id)) : /* @__PURE__ */ jsx("tr", { children: /* @__PURE__ */ jsx("td", { colSpan: 8, children: "Nenhuma inspeção encontrada para o filtro atual." }) }) })
-        ] }) })
       ] })
     ] })
   ] });
