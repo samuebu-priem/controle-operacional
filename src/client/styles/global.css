@@ -1105,6 +1105,22 @@ img {
   background: rgba(4, 9, 18, 0.42);
 }
 
+.quality-report-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 24px;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.12);
+  background:
+    linear-gradient(90deg, rgba(56, 189, 248, 0.12), transparent 46%),
+    rgba(5, 10, 20, 0.46);
+}
+
+.quality-report-heading .section-title {
+  font-size: 1.28rem;
+}
+
 .quality-select {
   min-width: 220px;
   flex: 1 1 220px;
@@ -1178,6 +1194,10 @@ img {
   margin-top: 0;
 }
 
+.quality-layout--report {
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+}
+
 .quality-chart-panel {
   width: 100%;
   display: grid;
@@ -1188,6 +1208,11 @@ img {
   background:
     radial-gradient(circle at 50% 34%, rgba(56, 189, 248, 0.16), transparent 34%),
     linear-gradient(180deg, rgba(12, 18, 32, 0.72), rgba(4, 9, 18, 0.28));
+}
+
+.quality-layout--report .quality-chart-panel {
+  align-content: center;
+  min-height: 430px;
 }
 
 .quality-donut {
@@ -1310,6 +1335,11 @@ img {
   align-content: start;
   gap: 14px;
   padding: 28px 24px;
+}
+
+.quality-ranking > .helper {
+  text-align: left;
+  margin-top: -6px;
 }
 
 .quality-ranking__list {
@@ -1521,6 +1551,127 @@ img {
 
 .quality-card .helper {
   text-align: center;
+}
+
+.quality-table-panel {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  border-top: 1px solid rgba(56, 189, 248, 0.12);
+  background: rgba(4, 9, 18, 0.34);
+}
+
+.quality-table-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.quality-table-panel__head .helper {
+  text-align: left;
+}
+
+.quality-table-panel__count {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  background: rgba(56, 189, 248, 0.1);
+  color: #b9ecff;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.quality-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  border-radius: var(--radius);
+  background: #f8fafc;
+}
+
+.quality-report-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  color: #172033;
+  font-size: 0.86rem;
+}
+
+.quality-report-table th,
+.quality-report-table td {
+  padding: 12px 13px;
+  border-bottom: 1px solid #dbe4ef;
+  text-align: left;
+  vertical-align: top;
+}
+
+.quality-report-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #e0f2fe;
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quality-report-table tbody tr:nth-child(even) {
+  background: #eef6fb;
+}
+
+.quality-report-table tbody tr:hover {
+  background: #dff3ff;
+}
+
+.quality-report-table__number {
+  text-align: center;
+  font-weight: 900;
+}
+
+.quality-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.quality-pill--aprovado,
+.quality-pill--leve {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.quality-pill--reprovado,
+.quality-pill--grave {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.quality-pill--com_observacao,
+.quality-pill--media {
+  border-color: #fcd34d;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.quality-pill--sem-ponto-critico {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #475569;
 }
 
 @media (max-width: 768px) {
@@ -1781,6 +1932,16 @@ img {
     padding: 14px;
   }
 
+  .quality-report-heading,
+  .quality-table-panel__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quality-report-heading {
+    padding: 16px 14px;
+  }
+
   .quality-kpis {
     grid-template-columns: 1fr;
   }
@@ -1831,6 +1992,14 @@ img {
 
   .quality-ranking {
     padding: 20px 14px;
+  }
+
+  .quality-table-panel {
+    padding: 16px 14px;
+  }
+
+  .quality-table-panel__count {
+    width: fit-content;
   }
 
   .quality-ranking__item .button {
