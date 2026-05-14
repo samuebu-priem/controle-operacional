@@ -148,6 +148,17 @@ function getPhotoItems(inspecao, points) {
   });
   return [...unique.values()];
 }
+function getHighestSeverity(points) {
+  const rank = { LEVE: 1, MEDIA: 2, GRAVE: 3 };
+  return points.reduce((highest, ponto) => {
+    if ((rank[ponto.severidade] ?? 0) > (rank[highest] ?? 0)) return ponto.severidade;
+    return highest;
+  }, "LEVE");
+}
+function joinUnique(values, fallback = "") {
+  const unique = [...new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean))];
+  return unique.length > 0 ? unique.join(" | ") : fallback;
+}
 function columnName(index) {
   let name = "";
   let value = index + 1;
@@ -157,6 +168,17 @@ function columnName(index) {
     value = Math.floor((value - mod) / 26);
   }
   return name;
+}
+function buildTableSheetRows(sheet) {
+  const rows = [
+    { type: "section", cells: [sheet.title || sheet.name] },
+    { type: "subtitle", cells: [sheet.subtitle || ""] },
+    { type: "blank", cells: [] },
+    { type: "header", cells: sheet.headers }
+  ];
+  const bodyRows = sheet.rows.length > 0 ? sheet.rows : [Array.from({ length: sheet.headers.length }, (_, index) => (index === 0 ? "Sem dados para este filtro." : ""))];
+  bodyRows.forEach((row) => rows.push({ type: "data", cells: row }));
+  return rows;
 }
 function buildSingleSheetRows(sections) {
   const rows = [];
@@ -171,15 +193,13 @@ function buildSingleSheetRows(sections) {
   return rows;
 }
 function worksheetXml(sheet) {
-  const { sections } = sheet;
-  const allRows = buildSingleSheetRows(sections);
-  const maxColumns = Math.max(...sections.map((section) => section.headers.length));
+  const isTableSheet = Boolean(sheet.headers);
+  const allRows = isTableSheet ? buildTableSheetRows(sheet) : buildSingleSheetRows(sheet.sections);
+  const maxColumns = isTableSheet ? sheet.headers.length : Math.max(...sheet.sections.map((section) => section.headers.length));
   const cols = Array.from({ length: maxColumns }, (_, index) => {
       const values = allRows.map((row) => row.cells[index] ?? "");
-      const width = Math.min(
-        52,
-        Math.max(12, ...values.map((value) => String(value).length + 2))
-      );
+      const preferredWidth = sheet.columnWidths?.[index];
+      const width = preferredWidth ?? Math.min(58, Math.max(12, ...values.map((value) => String(value).length + 2)));
       return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`;
     })
     .join("");
@@ -204,16 +224,18 @@ function worksheetXml(sheet) {
   const mergeCells = allRows
     .map((row, index) => (row.type === "section" || row.type === "subtitle" ? `<mergeCell ref="A${index + 1}:${lastColumn}${index + 1}"/>` : ""))
     .filter(Boolean);
+  const filterRef = isTableSheet ? `<autoFilter ref="A4:${lastColumn}${allRows.length}"/>` : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
       <dimension ref="A1:${lastRef}"/>
       <sheetViews>
         <sheetView workbookViewId="0">
-          <pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/>
+          <pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>
         </sheetView>
       </sheetViews>
       <cols>${cols}</cols>
       <sheetData>${sheetRows}</sheetData>
+      ${filterRef}
       <mergeCells count="${mergeCells.length}">${mergeCells.join("")}</mergeCells>
       <pageMargins left="0.4" right="0.4" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>
     </worksheet>`;
@@ -276,10 +298,11 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
   const periodLabel = period === "CUSTOM" ? `${customStart || "inicio"} a ${customEnd || "fim"}` : PERIOD_LABELS[period];
   const categoryLabel = category === "ALL" ? "Todas" : category;
   const totalPoints = analytics.items.reduce((sum, item) => sum + item.count, 0);
-  const inspectionRows = inspecoes.map((inspecao) => {
+  const inspectionRows = inspecoes.map((inspecao, index) => {
     const points = getMatchingPoints(inspecao, category);
     const photos = getPhotoItems(inspecao, points);
     return [
+      index + 1,
       formatReportDate(inspecao.dataInspecao),
       inspecao.frota?.numeroFrota ?? inspecao.frotaId ?? "",
       inspecao.frota?.placa ?? "",
@@ -288,18 +311,25 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
       inspecao.status,
       inspecao.nomeInspetor,
       points.length,
+      points.length > 0 ? getHighestSeverity(points) : "Sem ponto critico",
+      joinUnique(points.map((ponto) => normalizeLabel(ponto.categoria)), "Sem ponto critico"),
+      joinUnique(points.map((ponto) => ponto.localizacao), "Sem ponto critico"),
       photos.length,
       photos.length > 0 ? photos.map((foto) => foto.fileName || foto.imageUrl).join(" | ") : "Sem arquivo informado",
       inspecao.observacoesGerais ?? ""
     ];
   });
+  let pointRowNumber = 0;
   const pointRows = inspecoes.flatMap((inspecao) =>
     getMatchingPoints(inspecao, category).map((ponto) => {
       const photos = getPhotoItems(inspecao, [ponto]);
+      pointRowNumber += 1;
       return [
+        pointRowNumber,
         formatReportDate(inspecao.dataInspecao),
         inspecao.frota?.numeroFrota ?? inspecao.frotaId ?? "",
         inspecao.frota?.placa ?? "",
+        inspecao.status,
         normalizeLabel(ponto.categoria),
         ponto.localizacao,
         ponto.severidade,
@@ -310,44 +340,58 @@ function exportQualitySpreadsheet({ inspecoes, analytics, period, category, cust
     })
   );
   const summaryRows = [
-    ["Gerado em", formatReportDate(/* @__PURE__ */ new Date())],
-    ["Periodo", periodLabel],
-    ["Categoria filtrada", categoryLabel],
-    ["Total de inspecoes", inspecoes.length],
-    ["Inspecoes com ponto critico", analytics.withCriticalPoints],
-    ["Total de ocorrencias", totalPoints],
-    ["Recorrencia lider", analytics.items[0]?.label ?? "Sem recorrencia"]
+    ["Gerado em", formatReportDate(/* @__PURE__ */ new Date()), "Arquivo criado pelo Controle Operacional"],
+    ["Periodo analisado", periodLabel, "Filtro aplicado na tela"],
+    ["Categoria filtrada", categoryLabel, "Todas ou uma categoria especifica"],
+    ["Total de inspecoes", inspecoes.length, "Quantidade de registros no periodo"],
+    ["Inspecoes com ponto critico", analytics.withCriticalPoints, "Registros com ocorrencia de qualidade"],
+    ["Total de ocorrencias", totalPoints, "Soma dos pontos criticos filtrados"],
+    ["Recorrencia lider", analytics.items[0]?.label ?? "Sem recorrencia", "Categoria com maior volume"]
   ];
   const rankingRows = analytics.items.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`, (item.labels ?? [item.label]).join(" | ")]);
-  const severityRows = analytics.severityItems.map((item) => [item.label, item.count, `${Math.round(item.percentage)}%`]);
+  const severityRows = analytics.severityItems.map((item, index) => [index + 1, item.label, item.count, `${Math.round(item.percentage)}%`]);
   const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const subtitle = `Periodo: ${periodLabel} | Categoria: ${categoryLabel} | Gerado em: ${formatReportDate(/* @__PURE__ */ new Date())}`;
   const workbook = createXlsxWorkbook([
     {
       name: "Resumo",
-      sections: [
-        { title: "Relatorio de Indicadores de Qualidade", subtitle, headers: ["Campo", "Valor"], rows: [["Relatorio", "Indicadores de Qualidade"], ["Periodo", periodLabel], ["Categoria", categoryLabel], ["Total de inspecoes", inspecoes.length], ["Total de ocorrencias", totalPoints]] },
-        { title: "Resumo executivo", subtitle: "", headers: ["Indicador", "Valor"], rows: summaryRows }
-      ]
+      title: "Relatorio de Indicadores de Qualidade",
+      subtitle,
+      headers: ["Indicador", "Valor", "Observacao"],
+      rows: summaryRows,
+      columnWidths: [30, 28, 52]
     },
     {
       name: "Recorrencias",
-      sections: [
-        { title: "Ranking de recorrencias", subtitle, headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"], rows: rankingRows },
-        { title: "Distribuicao por severidade", subtitle: "", headers: ["Severidade", "Quantidade", "Percentual"], rows: severityRows }
-      ]
+      title: "Ranking de recorrencias",
+      subtitle,
+      headers: ["Posicao", "Categoria", "Ocorrencias", "Percentual", "Agrupamentos"],
+      rows: rankingRows,
+      columnWidths: [10, 28, 14, 14, 48]
     },
     {
-      name: "Inspecoes",
-      sections: [
-        { title: "Inspecoes analisadas", subtitle, headers: ["Data", "Frota", "Placa", "Tipo de tanque", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Arquivos", "Arquivos / evidencias", "Observacoes"], rows: inspectionRows }
-      ]
+      name: "Severidade",
+      title: "Distribuicao por severidade",
+      subtitle,
+      headers: ["Posicao", "Severidade", "Quantidade", "Percentual"],
+      rows: severityRows,
+      columnWidths: [10, 18, 14, 14]
+    },
+    {
+      name: "Registro inspecoes",
+      title: "Registro de inspecoes analisadas",
+      subtitle,
+      headers: ["#", "Data", "Frota", "Placa", "Equipamento", "Tipo inspecao", "Status", "Inspetor", "Pontos criticos", "Maior severidade", "Categorias", "Locais", "Arquivos", "Evidencias", "Observacoes"],
+      rows: inspectionRows,
+      columnWidths: [7, 20, 12, 14, 22, 18, 16, 24, 16, 18, 34, 34, 12, 46, 52]
     },
     {
       name: "Pontos criticos",
-      sections: [
-        { title: "Detalhamento dos pontos criticos", subtitle, headers: ["Data", "Frota", "Placa", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"], rows: pointRows }
-      ]
+      title: "Detalhamento dos pontos criticos",
+      subtitle,
+      headers: ["#", "Data", "Frota", "Placa", "Status", "Categoria", "Localizacao", "Severidade", "Descricao", "Procedimento", "Arquivos / links"],
+      rows: pointRows,
+      columnWidths: [7, 20, 12, 14, 16, 24, 28, 14, 46, 46, 46]
     }
   ]);
   const blob = new Blob([workbook], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
