@@ -253,11 +253,9 @@ export async function updateCollaborator(id: string, payload: Partial<{ nome: st
 export async function createPostWashInspection(payload: {
   frota: string;
   colaboradorId: string;
-  inspetor: string;
   resultado: PostWashInspectionResult;
   motivo?: PostWashFailureReason | "";
   observacao?: string | null;
-  foto?: string | null;
 }) {
   return request<{ inspecao: PostWashInspection }>("/api/post-wash/inspections", {
     method: "POST",
@@ -338,4 +336,21 @@ export async function getCollaboratorPerformance(id: string) {
     evolucaoMensal: Array<{ periodo: string; total: number; aprovadas: number; reprovadas: number }>;
     tendencia: string;
   }>(`/api/post-wash/collaborators/${id}/performance`);
+}
+
+export async function uploadPostWashFotos(inspecaoId: string, formData: FormData) {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_BASE}/api/post-wash/inspections/${inspecaoId}/fotos`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    throw new Error(error?.message ?? "Erro ao enviar arquivos");
+  }
+
+  return response.json() as Promise<{ fotos: PostWashInspection["fotos"] }>;
 }

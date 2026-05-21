@@ -1,13 +1,15 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createPostWashInspection, listCollaborators } from "../api";
+import { createPostWashInspection, listCollaborators, uploadPostWashFotos } from "../api";
+import PhotoUpload from "../components/inspecao/PhotoUpload";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Input, { Textarea } from "../components/ui/Input";
 import Select from "../components/ui/Select";
+import { getAuthUser } from "../utils/auth";
 import { openPostWashWhatsAppMessage } from "../utils/whatsapp";
 
 const motivos = [
@@ -26,12 +28,12 @@ export default function NovaInspecaoPosLavagemPage() {
   const [form, setForm] = useState({
     frota: "",
     colaboradorId: "",
-    inspetor: "",
     resultado: "APROVADO",
     motivo: "",
-    observacao: "",
-    foto: ""
+    observacao: ""
   });
+  const [files, setFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState(null);
@@ -49,12 +51,25 @@ export default function NovaInspecaoPosLavagemPage() {
   }, []);
 
   const isRejected = form.resultado === "REPROVADO";
+  const authUser = getAuthUser();
+  const inspectorName = authUser?.fullName?.trim() || authUser?.name || "Usuario autenticado";
   const canSave = useMemo(() => {
-    return form.frota.trim() && form.colaboradorId && form.inspetor.trim() && (!isRejected || form.motivo);
+    return form.frota.trim() && form.colaboradorId && (!isRejected || form.motivo);
   }, [form, isRejected]);
 
   function patch(value) {
     setForm((current) => ({ ...current, ...value }));
+  }
+
+  function changeFiles(nextFiles) {
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setFiles(nextFiles);
+    setPreviews(nextFiles.map((file) => URL.createObjectURL(file)));
+  }
+
+  function removeFile(index) {
+    const nextFiles = files.filter((_, itemIndex) => itemIndex !== index);
+    changeFiles(nextFiles);
   }
 
   async function save() {
@@ -70,20 +85,30 @@ export default function NovaInspecaoPosLavagemPage() {
       const payload = {
         ...form,
         motivo: isRejected ? form.motivo : "",
-        observacao: form.observacao || null,
-        foto: form.foto || null
+        observacao: form.observacao || null
       };
       const response = await createPostWashInspection(payload);
-      setCreated(response.inspecao);
+      let createdInspection = response.inspecao;
+      if (files.length > 0) {
+        const formData = new FormData();
+        for (const file of files) {
+          formData.append("files[]", file);
+        }
+        const uploadResponse = await uploadPostWashFotos(createdInspection.id, formData);
+        createdInspection = {
+          ...createdInspection,
+          fotos: uploadResponse.fotos
+        };
+      }
+      setCreated(createdInspection);
       setForm({
         frota: "",
         colaboradorId: "",
-        inspetor: form.inspetor,
         resultado: "APROVADO",
         motivo: "",
-        observacao: "",
-        foto: ""
+        observacao: ""
       });
+      changeFiles([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao registrar inspecao");
     } finally {
@@ -104,14 +129,14 @@ export default function NovaInspecaoPosLavagemPage() {
               className: "form-grid form-grid--two",
               children: [
                 _jsx(Input, { label: "Frota", value: form.frota, onChange: (event) => patch({ frota: event.target.value }), placeholder: "Ex.: 1234" }),
-                _jsx(Input, { label: "Inspetor", value: form.inspetor, onChange: (event) => patch({ inspetor: event.target.value }), placeholder: "Nome do inspetor" }),
+                _jsx(Input, { label: "Inspetor", value: inspectorName, readOnly: true, helperText: "Preenchido automaticamente pelo usuario logado." }),
                 _jsxs(Select, { label: "Colaborador responsavel", value: form.colaboradorId, onChange: (event) => patch({ colaboradorId: event.target.value }), children: [_jsx("option", { value: "", children: "Selecione" }), colaboradores.map((item) => _jsx("option", { value: item.id, children: item.nome }, item.id))] }),
                 _jsxs(Select, { label: "Resultado", value: form.resultado, onChange: (event) => patch({ resultado: event.target.value, motivo: event.target.value === "APROVADO" ? "" : form.motivo }), children: [_jsx("option", { value: "APROVADO", children: "APROVADO" }), _jsx("option", { value: "REPROVADO", children: "REPROVADO" })] }),
-                isRejected ? _jsxs(Select, { label: "Nao conformidade", value: form.motivo, onChange: (event) => patch({ motivo: event.target.value }), errorText: isRejected && !form.motivo ? "Obrigatorio para reprovacao" : "", children: [_jsx("option", { value: "", children: "Selecione" }), motivos.map(([value, label]) => _jsx("option", { value: value, children: label }, value))] }) : null,
-                _jsx(Input, { label: "Foto", helperText: "Campo preparado para URL de evidencia futura.", value: form.foto, onChange: (event) => patch({ foto: event.target.value }), placeholder: "Opcional" })
+                isRejected ? _jsxs(Select, { label: "Nao conformidade", value: form.motivo, onChange: (event) => patch({ motivo: event.target.value }), errorText: isRejected && !form.motivo ? "Obrigatorio para reprovacao" : "", children: [_jsx("option", { value: "", children: "Selecione" }), motivos.map(([value, label]) => _jsx("option", { value: value, children: label }, value))] }) : null
               ]
             }),
             _jsx(Textarea, { label: "Observacao", value: form.observacao, onChange: (event) => patch({ observacao: event.target.value }), placeholder: "Opcional" }),
+            _jsx(PhotoUpload, { files: files, previews: previews, uploadedPhotos: [], onChangeFiles: changeFiles, onRemoveFile: removeFile, onSend: () => void save(), sending: saving }),
             _jsxs("div", { className: "inline-actions", children: [_jsx(Button, { type: "button", onClick: () => void save(), disabled: saving || !canSave, children: saving ? "Registrando..." : "Registrar inspeção" }), _jsx(Button, { type: "button", variant: "secondary", onClick: () => navigate("/pos-lavagem/historico"), children: "Ver historico" })] }),
             error ? _jsx("p", { className: "notice notice--error", children: error }) : null
           ]

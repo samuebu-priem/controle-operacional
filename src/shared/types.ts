@@ -85,9 +85,18 @@ export interface PostWashInspection {
   motivo: PostWashFailureReason | null;
   motivoLabel: string | null;
   observacao: string | null;
-  foto: string | null;
+  fotos: PostWashInspectionMedia[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PostWashInspectionMedia {
+  id: string;
+  inspectionId: string;
+  imageUrl: string;
+  fileName: string;
+  legenda: string | null;
+  createdAt: string;
 }
 
 export interface ResumoRecorrenciaItem {

@@ -113,6 +113,20 @@ export async function uploadFotos(inspecaoId, formData) {
     return response.json();
 }
 
+export async function uploadPostWashFotos(inspecaoId, formData) {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE}/api/post-wash/inspections/${inspecaoId}/fotos`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.message ?? "Erro ao enviar arquivos");
+    }
+    return response.json();
+}
+
 export async function listCollaborators(search = "") {
     const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
     return request(`/api/post-wash/collaborators${query}`);

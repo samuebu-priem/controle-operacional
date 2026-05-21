@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../../lib/prisma";
+import { uploadMedia, processAndSaveMedia, removeFiles } from "../fotos/foto.routes";
+import { requireAuth, type AuthenticatedRequest } from "../../middleware/auth";
 import { AppError } from "../../middleware/errorHandler";
 
 export const postWashRoutes = Router();
@@ -66,7 +68,6 @@ function formatInspection(inspection: {
   resultado: InspectionResult;
   motivo: FailureReason | null;
   observacao: string | null;
-  foto: string | null;
   createdAt: Date;
   updatedAt: Date;
   colaborador?: {
@@ -76,6 +77,14 @@ function formatInspection(inspection: {
     createdAt: Date;
     updatedAt: Date;
   } | null;
+  fotos?: Array<{
+    id: string;
+    inspectionId: string;
+    imageUrl: string;
+    fileName: string;
+    legenda: string | null;
+    createdAt: Date;
+  }>;
 }) {
   return {
     id: inspection.id,
@@ -95,7 +104,14 @@ function formatInspection(inspection: {
     motivo: inspection.motivo,
     motivoLabel: formatReason(inspection.motivo),
     observacao: inspection.observacao,
-    foto: inspection.foto,
+    fotos: (inspection.fotos ?? []).map((foto) => ({
+      id: foto.id,
+      inspectionId: foto.inspectionId,
+      imageUrl: foto.imageUrl,
+      fileName: foto.fileName,
+      legenda: foto.legenda,
+      createdAt: foto.createdAt.toISOString()
+    })),
     createdAt: inspection.createdAt.toISOString(),
     updatedAt: inspection.updatedAt.toISOString()
   };
@@ -108,14 +124,12 @@ function parseCreateInspection(body: unknown) {
 
   const frota = asTrimmedString(body.frota);
   const colaboradorId = asTrimmedString(body.colaboradorId);
-  const inspetor = asTrimmedString(body.inspetor);
   const resultado = asTrimmedString(body.resultado) as InspectionResult;
   const motivoText = asTrimmedString(body.motivo) as FailureReason;
   const motivo = motivoText || null;
   const observacao = normalizeOptionalText(body.observacao);
-  const foto = normalizeOptionalText(body.foto);
 
-  if (!frota || !colaboradorId || !inspetor || !resultado) {
+  if (!frota || !colaboradorId || !resultado) {
     throw new AppError("Campos obrigatÃ³rios ausentes", 400, "BAD_REQUEST");
   }
 
@@ -134,11 +148,9 @@ function parseCreateInspection(body: unknown) {
   return {
     frota,
     colaboradorId,
-    inspetor,
     resultado,
     motivo: resultado === "REPROVADO" ? motivo : null,
-    observacao,
-    foto
+    observacao
   };
 }
 
@@ -267,7 +279,7 @@ postWashRoutes.get("/inspections", async (req, res, next) => {
   try {
     const inspections = await prisma.postWashInspection.findMany({
       where: buildInspectionWhere(req.query),
-      include: { colaborador: true },
+      include: { colaborador: true, fotos: true },
       orderBy: { createdAt: "desc" }
     });
 
@@ -277,8 +289,13 @@ postWashRoutes.get("/inspections", async (req, res, next) => {
   }
 });
 
-postWashRoutes.post("/inspections", async (req, res, next) => {
+postWashRoutes.post("/inspections", requireAuth, async (req, res, next) => {
   try {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      throw new AppError("UsuÃ¡rio nÃ£o autenticado", 401, "UNAUTHORIZED");
+    }
+
     const payload = parseCreateInspection(req.body);
     const collaborator = await prisma.collaborator.findUnique({
       where: { id: payload.colaboradorId }
@@ -292,9 +309,18 @@ postWashRoutes.post("/inspections", async (req, res, next) => {
       throw new AppError("Colaborador inativo nÃ£o pode receber nova inspeÃ§Ã£o", 400, "BAD_REQUEST");
     }
 
+    const user = await prisma.user.findUnique({
+      where: { id: authReq.user.id },
+      select: { name: true, fullName: true }
+    });
+    const inspetor = user?.fullName?.trim() || user?.name?.trim() || authReq.user.name;
+
     const inspection = await prisma.postWashInspection.create({
-      data: payload,
-      include: { colaborador: true }
+      data: {
+        ...payload,
+        inspetor
+      },
+      include: { colaborador: true, fotos: true }
     });
 
     return res.status(201).json({ inspecao: formatInspection(inspection) });
@@ -307,7 +333,7 @@ postWashRoutes.get("/inspections/:id", async (req, res, next) => {
   try {
     const inspection = await prisma.postWashInspection.findUnique({
       where: { id: req.params.id },
-      include: { colaborador: true }
+      include: { colaborador: true, fotos: true }
     });
 
     if (!inspection) {
@@ -320,12 +346,89 @@ postWashRoutes.get("/inspections/:id", async (req, res, next) => {
   }
 });
 
+postWashRoutes.post("/inspections/:id/fotos", requireAuth, uploadMedia.array("files[]", 20), async (req, res, next) => {
+  try {
+    const inspection = await prisma.postWashInspection.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!inspection) {
+      throw new AppError("InspeÃ§Ã£o pÃ³s-lavagem nÃ£o encontrada", 404, "NOT_FOUND");
+    }
+
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    if (files.length === 0) {
+      throw new AppError("Nenhum arquivo enviado", 400, "BAD_REQUEST");
+    }
+
+    const compressedFiles: Array<{ filename: string; filePath: string }> = [];
+
+    try {
+      for (const file of files) {
+        compressedFiles.push(await processAndSaveMedia(file));
+      }
+
+      const fotos = await prisma.$transaction(async (tx: typeof prisma) => {
+        const created: Array<{
+          id: string;
+          inspectionId: string;
+          imageUrl: string;
+          fileName: string;
+          legenda: string | null;
+          createdAt: Date;
+        }> = [];
+
+        for (let index = 0; index < files.length; index += 1) {
+          const file = files[index];
+          const compressedFile = compressedFiles[index];
+
+          const foto = await tx.postWashInspectionMedia.create({
+            data: {
+              inspectionId: req.params.id,
+              imageUrl: `/uploads/${compressedFile.filename}`,
+              fileName: file.originalname,
+              legenda: null
+            }
+          });
+
+          created.push(foto);
+        }
+
+        return created;
+      });
+
+      return res.status(201).json({
+        fotos: fotos.map((foto: {
+          id: string;
+          inspectionId: string;
+          imageUrl: string;
+          fileName: string;
+          legenda: string | null;
+          createdAt: Date;
+        }) => ({
+          id: foto.id,
+          inspectionId: foto.inspectionId,
+          imageUrl: foto.imageUrl,
+          fileName: foto.fileName,
+          legenda: foto.legenda,
+          createdAt: foto.createdAt.toISOString()
+        }))
+      });
+    } catch (error) {
+      removeFiles(compressedFiles.map((file) => file.filePath));
+      throw error;
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
 postWashRoutes.get("/dashboard", async (req, res, next) => {
   try {
     const where = buildInspectionWhere(req.query);
     const inspections = await prisma.postWashInspection.findMany({
       where,
-      include: { colaborador: true },
+      include: { colaborador: true, fotos: true },
       orderBy: { createdAt: "asc" }
     });
 

@@ -17,7 +17,7 @@ if (!fs.existsSync(uploadsDir)) {
 
 const storage = multer.memoryStorage();
 
-const upload = multer({
+export const uploadMedia = multer({
   storage,
   limits: {
     fileSize: 80 * 1024 * 1024,
@@ -137,7 +137,7 @@ async function saveVideo(file: Express.Multer.File) {
   }
 }
 
-async function processAndSaveMedia(file: Express.Multer.File) {
+export async function processAndSaveMedia(file: Express.Multer.File) {
   if (file.mimetype.startsWith("image/")) {
     return compressAndSaveImage(file);
   }
@@ -145,7 +145,7 @@ async function processAndSaveMedia(file: Express.Multer.File) {
   return saveVideo(file);
 }
 
-function removeFiles(filePaths: string[]) {
+export function removeFiles(filePaths: string[]) {
   for (const filePath of filePaths) {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -155,7 +155,7 @@ function removeFiles(filePaths: string[]) {
 
 fotoRoutes.post(
   "/inspecoes/:id/fotos",
-  upload.array("files[]", 20),
+  uploadMedia.array("files[]", 20),
   async (req, res, next) => {
     try {
       const inspecao = await prisma.inspecao.findUnique({
