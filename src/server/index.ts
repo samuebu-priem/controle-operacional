@@ -4,9 +4,9 @@ import cors from "cors";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { authRoutes } from "./modules/auth/auth.routes";
+import { colaboradorRoutes } from "./modules/colaboradores/colaborador.routes";
 import { frotaRoutes } from "./modules/frotas/frota.routes";
 import { inspecaoRoutes } from "./modules/inspecoes/inspecao.routes";
-import { postWashRoutes } from "./modules/post-wash/postWash.routes";
 import { fotoRoutes } from "./modules/fotos/foto.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -24,9 +24,9 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/colaboradores", colaboradorRoutes);
 app.use("/api/frotas", frotaRoutes);
 app.use("/api/inspecoes", inspecaoRoutes);
-app.use("/api/post-wash", postWashRoutes);
 app.use("/api", fotoRoutes);
 
 app.use(errorHandler);

@@ -36,67 +36,43 @@ model Frota {
 }
 
 model Collaborator {
-  id                  String               @id @default(cuid())
-  nome                String
-  ativo               Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  postWashInspections PostWashInspection[]
+  id        String     @id @default(cuid())
+  nome      String
+  ativo     Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  inspecoes Inspecao[]
 
   @@index([nome])
   @@index([ativo])
-}
-
-model PostWashInspection {
-  id            String                    @id @default(cuid())
-  frota         String
-  colaboradorId String
-  inspetor      String
-  resultado     PostWashInspectionResult
-  motivo        PostWashFailureReason?
-  observacao    String?
-  createdAt     DateTime                  @default(now())
-  updatedAt     DateTime                  @updatedAt
-  colaborador   Collaborator              @relation(fields: [colaboradorId], references: [id])
-  fotos         PostWashInspectionMedia[]
-
-  @@index([frota])
-  @@index([colaboradorId, createdAt])
-  @@index([resultado])
-  @@index([motivo])
-}
-
-model PostWashInspectionMedia {
-  id          String             @id @default(cuid())
-  inspectionId String
-  imageUrl    String
-  fileName    String
-  legenda     String?
-  createdAt   DateTime           @default(now())
-  inspection  PostWashInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
-
-  @@index([inspectionId])
 }
 
 model Inspecao {
   id                String         @id @default(cuid())
   frotaId           String
   userId            String?
+  colaboradorId     String?
   dataInspecao      DateTime
   tipoInspecao      TipoInspecao
   status            StatusInspecao
+  resultadoPosLavagem ResultadoPosLavagem?
+  motivoNaoConformidade MotivoNaoConformidade?
   observacoesGerais String?
   nomeInspetor      String
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   fotos             FotoInspecao[]
+  colaborador       Collaborator?  @relation(fields: [colaboradorId], references: [id])
   frota             Frota          @relation(fields: [frotaId], references: [id], onDelete: Cascade)
   user              User?          @relation(fields: [userId], references: [id])
   pontosCriticos    PontoCritico[]
 
   @@index([frotaId, dataInspecao])
+  @@index([colaboradorId, dataInspecao])
   @@index([tipoInspecao])
   @@index([status])
+  @@index([resultadoPosLavagem])
+  @@index([motivoNaoConformidade])
 }
 
 model PontoCritico {
@@ -148,12 +124,12 @@ enum Severidade {
   GRAVE
 }
 
-enum PostWashInspectionResult {
+enum ResultadoPosLavagem {
   APROVADO
   REPROVADO
 }
 
-enum PostWashFailureReason {
+enum MotivoNaoConformidade {
   FERRUGEM
   MANCHA
   AMARELAMENTO

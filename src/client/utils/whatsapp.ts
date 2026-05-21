@@ -1,5 +1,4 @@
 import type { FotoInspecao, Inspecao, PontoCritico } from "../../shared/types";
-import type { PostWashInspection } from "../../shared/types";
 
 type WhatsAppPontoCritico = PontoCritico & {
   fotos?: FotoInspecao[];
@@ -43,14 +42,9 @@ function buildFileUrl(imageUrl: string) {
 function getUniqueFotos(inspecao: WhatsAppInspection) {
   const fotos = new Map<string, FotoInspecao>();
 
-  for (const foto of inspecao.fotos ?? []) {
-    fotos.set(foto.id, foto);
-  }
-
+  for (const foto of inspecao.fotos ?? []) fotos.set(foto.id, foto);
   for (const ponto of inspecao.pontosCriticos) {
-    for (const foto of ponto.fotos ?? []) {
-      fotos.set(foto.id, foto);
-    }
+    for (const foto of ponto.fotos ?? []) fotos.set(foto.id, foto);
   }
 
   return Array.from(fotos.values());
@@ -74,7 +68,7 @@ async function buildShareFiles(inspecao: WhatsAppInspection) {
       const fileName = getSafeFileName(foto.fileName, `foto-${index + 1}.jpg`);
       files.push(new File([blob], fileName, { type: blob.type || "image/jpeg" }));
     } catch {
-      // If one file cannot be loaded, keep sharing the remaining files.
+      // Keep sharing the remaining files if one file cannot be loaded.
     }
   }
 
@@ -92,9 +86,53 @@ async function copyTextToClipboard(text: string) {
   }
 }
 
+function formatDateTimeBR(value: string) {
+  return new Date(value).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatMotivoNaoConformidade(value: string | null | undefined) {
+  const labels: Record<string, string> = {
+    FERRUGEM: "Ferrugem",
+    MANCHA: "Mancha",
+    AMARELAMENTO: "Amarelamento",
+    ODOR: "Odor",
+    PRODUTO_RESIDUAL: "Produto residual",
+    VALVULA_CONTAMINADA: "Válvula contaminada",
+    OUTRO: "Outro"
+  };
+
+  return value ? labels[value] ?? value : "Nao informada";
+}
+
 export function buildWhatsAppInspectionMessage(inspecao: WhatsAppInspection) {
   const observacao = normalizeText(inspecao.observacoesGerais, "Sem observacoes.");
   const inspetor = normalizeText(inspecao.nomeInspetor, "Nao informado");
+
+  if (inspecao.tipoInspecao === "APOS_LAVAGEM") {
+    const result = inspecao.resultadoPosLavagem ?? inspecao.status;
+    const lines = [
+      "INSPEÇÃO PÓS-LAVAGEM",
+      "",
+      `Frota: ${inspecao.frota?.numeroFrota ?? inspecao.frotaId}`,
+      `Data/Hora: ${formatDateTimeBR(inspecao.dataInspecao)}`,
+      `Inspetor: ${inspetor}`,
+      `Colaborador Responsável: ${normalizeText(inspecao.colaborador?.nome, "Nao informado")}`,
+      `Resultado: ${result}`
+    ];
+
+    if (result === "REPROVADO") {
+      lines.push("", `Não Conformidade: ${formatMotivoNaoConformidade(inspecao.motivoNaoConformidade)}`);
+    }
+
+    lines.push("", "Observação:", observacao);
+    return lines.join("\n");
+  }
 
   const header = [
     `*Frota:* ${inspecao.frota?.numeroFrota ?? inspecao.frotaId}`,
@@ -107,8 +145,7 @@ export function buildWhatsAppInspectionMessage(inspecao: WhatsAppInspection) {
     inspecao.pontosCriticos.length > 0
       ? inspecao.pontosCriticos
           .map((ponto, index) => {
-            const prefix =
-              inspecao.pontosCriticos.length > 1 ? `*Ponto critico ${index + 1}:*\n` : "*Ponto critico:*\n";
+            const prefix = inspecao.pontosCriticos.length > 1 ? `*Ponto critico ${index + 1}:*\n` : "*Ponto critico:*\n";
             return (
               `${prefix}` +
               `*Tipo:* ${formatLabel(ponto.categoria, "Nao informado")}\n` +
@@ -150,42 +187,6 @@ export async function openWhatsAppInspectionMessage(inspecao: WhatsAppInspection
     window.alert("Este navegador nao permite compartilhar arquivos automaticamente. Vou abrir o WhatsApp apenas com o texto.");
   }
 
-  const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
-function formatDateTimeBR(value: string) {
-  return new Date(value).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-export function buildPostWashWhatsAppMessage(inspecao: PostWashInspection) {
-  const lines = [
-    "📋 INSPEÇÃO PÓS-LAVAGEM",
-    "",
-    `Frota: ${normalizeText(inspecao.frota, "Nao informada")}`,
-    `Data/Hora: ${formatDateTimeBR(inspecao.createdAt)}`,
-    `Inspetor: ${normalizeText(inspecao.inspetor, "Nao informado")}`,
-    `Colaborador Responsável: ${normalizeText(inspecao.colaborador?.nome, "Nao informado")}`,
-    `Resultado: ${inspecao.resultado}`
-  ];
-
-  if (inspecao.resultado === "REPROVADO") {
-    lines.push("", `Nao Conformidade: ${inspecao.motivoLabel ?? inspecao.motivo ?? "Nao informada"}`);
-  }
-
-  lines.push("", "Observacao:", normalizeText(inspecao.observacao, "Sem observacao."));
-
-  return lines.join("\n");
-}
-
-export function openPostWashWhatsAppMessage(inspecao: PostWashInspection) {
-  const message = buildPostWashWhatsAppMessage(inspecao);
   const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
   window.open(url, "_blank", "noopener,noreferrer");
 }

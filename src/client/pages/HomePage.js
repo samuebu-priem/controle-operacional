@@ -43,17 +43,6 @@ export default function HomePage() {
           children: [
             _jsx(Button, {
               type: "button",
-              onClick: () => navigate("/pos-lavagem/nova"),
-              children: "Inspecao pos-lavagem"
-            }),
-            _jsx(Button, {
-              type: "button",
-              variant: "secondary",
-              onClick: () => navigate("/pos-lavagem/dashboard"),
-              children: "Indicadores pos-lavagem"
-            }),
-            _jsx(Button, {
-              type: "button",
               variant: "secondary",
               onClick: () => navigate("/colaboradores"),
               children: "Colaboradores"

@@ -4,9 +4,8 @@ import type {
   FotoInspecao,
   Frota,
   Inspecao,
-  PostWashFailureReason,
-  PostWashInspection,
-  PostWashInspectionResult,
+  MotivoNaoConformidade,
+  ResultadoPosLavagem,
   Severidade,
   StatusInspecao,
   TipoInspecao
@@ -128,8 +127,10 @@ export async function createInspecao(payload: {
   dataInspecao: string;
   tipoInspecao: TipoInspecao;
   status: StatusInspecao;
+  colaboradorId?: string | null;
+  resultadoPosLavagem?: ResultadoPosLavagem | null;
+  motivoNaoConformidade?: MotivoNaoConformidade | null;
   observacoesGerais?: string | null;
-  nomeInspetor: string;
   pontosCriticos: Array<{
     categoria: string;
     localizacao: string;
@@ -246,128 +247,19 @@ export async function uploadFotos(inspecaoId: string, formData: FormData) {
 
 export async function listCollaborators(search = "") {
   const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
-  return request<{ colaboradores: Collaborator[] }>(`/api/post-wash/collaborators${query}`);
+  return request<{ colaboradores: Collaborator[] }>(`/api/colaboradores${query}`);
 }
 
 export async function createCollaborator(payload: { nome: string; ativo?: boolean }) {
-  return request<{ colaborador: Collaborator }>("/api/post-wash/collaborators", {
+  return request<{ colaborador: Collaborator }>("/api/colaboradores", {
     method: "POST",
     body: JSON.stringify(payload)
   });
 }
 
 export async function updateCollaborator(id: string, payload: Partial<{ nome: string; ativo: boolean }>) {
-  return request<{ colaborador: Collaborator }>(`/api/post-wash/collaborators/${id}`, {
+  return request<{ colaborador: Collaborator }>(`/api/colaboradores/${id}`, {
     method: "PATCH",
     body: JSON.stringify(payload)
   });
-}
-
-export async function createPostWashInspection(payload: {
-  frota: string;
-  colaboradorId: string;
-  resultado: PostWashInspectionResult;
-  motivo?: PostWashFailureReason | "";
-  observacao?: string | null;
-}) {
-  return request<{ inspecao: PostWashInspection }>("/api/post-wash/inspections", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-}
-
-export async function listPostWashInspections(filters: {
-  frota?: string;
-  colaborador?: string;
-  colaboradorId?: string;
-  resultado?: string;
-  from?: string;
-  to?: string;
-} = {}) {
-  const params = new URLSearchParams();
-  if (filters.frota?.trim()) params.set("frota", filters.frota.trim());
-  if (filters.colaborador?.trim()) params.set("colaborador", filters.colaborador.trim());
-  if (filters.colaboradorId?.trim()) params.set("colaboradorId", filters.colaboradorId.trim());
-  if (filters.resultado?.trim()) params.set("resultado", filters.resultado.trim());
-  if (filters.from?.trim()) params.set("from", filters.from.trim());
-  if (filters.to?.trim()) params.set("to", filters.to.trim());
-
-  const query = params.toString() ? `?${params.toString()}` : "";
-  return request<{ inspecoes: PostWashInspection[] }>(`/api/post-wash/inspections${query}`);
-}
-
-export async function getPostWashInspection(id: string) {
-  return request<{ inspecao: PostWashInspection }>(`/api/post-wash/inspections/${id}`);
-}
-
-export async function getPostWashDashboard(filters: {
-  colaboradorId?: string;
-  resultado?: string;
-  from?: string;
-  to?: string;
-} = {}) {
-  const params = new URLSearchParams();
-  if (filters.colaboradorId?.trim()) params.set("colaboradorId", filters.colaboradorId.trim());
-  if (filters.resultado?.trim()) params.set("resultado", filters.resultado.trim());
-  if (filters.from?.trim()) params.set("from", filters.from.trim());
-  if (filters.to?.trim()) params.set("to", filters.to.trim());
-
-  const query = params.toString() ? `?${params.toString()}` : "";
-  return request<{
-    resumo: {
-      totalInspecoes: number;
-      aprovadas: number;
-      reprovadas: number;
-      taxaAprovacao: number;
-    };
-    principaisMotivos: Array<{ motivo: PostWashFailureReason; motivoLabel: string; quantidade: number }>;
-    evolucao: Array<{ periodo: string; total: number; aprovadas: number; reprovadas: number }>;
-    indicadoresPorColaborador: Array<{
-      colaboradorId: string;
-      colaboradorNome: string;
-      totalInspecoes: number;
-      aprovacoes: number;
-      reprovacoes: number;
-      taxaAprovacao: number;
-      principalMotivoFalha: { motivo: PostWashFailureReason; motivoLabel: string; total: number } | null;
-      ultimaOcorrencia: PostWashInspection | null;
-    }>;
-  }>(`/api/post-wash/dashboard${query}`);
-}
-
-export async function getCollaboratorPerformance(id: string) {
-  return request<{
-    colaborador: Collaborator;
-    resumo: {
-      totalInspecoes: number;
-      aprovadas: number;
-      reprovadas: number;
-      taxaAprovacao: number;
-    };
-    principaisNaoConformidades: Array<{ motivo: PostWashFailureReason; motivoLabel: string; quantidade: number }>;
-    historicoRecente: PostWashInspection[];
-    evolucaoMensal: Array<{ periodo: string; total: number; aprovadas: number; reprovadas: number }>;
-    tendencia: string;
-  }>(`/api/post-wash/collaborators/${id}/performance`);
-}
-
-export async function uploadPostWashFotos(inspecaoId: string, formData: FormData) {
-  const token = localStorage.getItem("token");
-
-  const response = await fetch(`${API_BASE}/api/post-wash/inspections/${inspecaoId}/fotos`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData
-  });
-
-  if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
-    if (response.status === 401) {
-      clearAuthSession();
-      window.location.href = "/login";
-    }
-    throw new Error(error?.message ?? "Erro ao enviar arquivos");
-  }
-
-  return response.json() as Promise<{ fotos: PostWashInspection["fotos"] }>;
 }

@@ -227,6 +227,9 @@ export default function InspecaoDetalhePage() {
                   children: [
                     _jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Inspetor:" }), " ", inspecao.nomeInspetor] }),
                     _jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Tipo:" }), " ", inspecao.tipoInspecao] }),
+                    inspecao.tipoInspecao === "APOS_LAVAGEM" ? _jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Colaborador:" }), " ", inspecao.colaborador?.nome ?? "Nao informado"] }) : null,
+                    inspecao.tipoInspecao === "APOS_LAVAGEM" ? _jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Resultado pos-lavagem:" }), " ", inspecao.resultadoPosLavagem ?? inspecao.status] }) : null,
+                    inspecao.tipoInspecao === "APOS_LAVAGEM" && inspecao.motivoNaoConformidade ? _jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Nao conformidade:" }), " ", inspecao.motivoNaoConformidade] }) : null,
                     _jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Observacoes:" }), " ", inspecao.observacoesGerais ?? "Sem observacoes"] })
                   ]
                 })

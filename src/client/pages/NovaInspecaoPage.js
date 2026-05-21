@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createInspecao, getFrotaByNumero, uploadFotos } from "../api";
+import { createInspecao, getFrotaByNumero, listCollaborators, uploadFotos } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import CriticalPointForm from "../components/inspecao/CriticalPointForm";
@@ -19,7 +19,7 @@ const CHECKLIST_BASE = [
   { id: "odor", label: "Odor ou residuo aparente", localizacao: "Geral", categoria: "Resquicio de produto" }
 ];
 
-const CATEGORIAS = ["Ferrugem", "Resquicio de produto", "Fuligem", "Amarelamento", "Mancha"];
+const CATEGORIAS = ["Ferrugem", "Mancha", "Amarelamento", "Odor", "Produto residual", "Valvula contaminada", "Outro", "Resquicio de produto", "Fuligem"];
 const SEVERIDADES = ["LEVE", "MEDIA", "GRAVE"];
 
 function createChecklistState() {
@@ -58,6 +58,7 @@ export default function NovaInspecaoPage() {
   const authUser = getAuthUser();
   const inspectorName = authUser?.fullName?.trim() || authUser?.name || "";
   const [frotaEncontrada, setFrotaEncontrada] = useState(null);
+  const [colaboradores, setColaboradores] = useState([]);
   const [tipoConfirmado, setTipoConfirmado] = useState(false);
   const [values, setValues] = useState({
     numeroFrota: "",
@@ -66,6 +67,9 @@ export default function NovaInspecaoPage() {
     dataInspecao: new Date().toISOString().slice(0, 16),
     tipoInspecao: "ANTES_LAVAGEM",
     status: "COM_OBSERVACAO",
+    colaboradorId: "",
+    resultadoPosLavagem: "",
+    motivoNaoConformidade: "",
     nomeInspetor: inspectorName,
     observacoesGerais: ""
   });
@@ -78,6 +82,19 @@ export default function NovaInspecaoPage() {
   useEffect(() => {
     setValues((current) => ({ ...current, nomeInspetor: inspectorName }));
   }, [inspectorName]);
+
+  useEffect(() => {
+    async function loadColaboradores() {
+      try {
+        const response = await listCollaborators();
+        setColaboradores(response.colaboradores.filter((item) => item.ativo));
+      } catch {
+        setColaboradores([]);
+      }
+    }
+
+    void loadColaboradores();
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -109,7 +126,27 @@ export default function NovaInspecaoPage() {
   }, [values.numeroFrota]);
 
   function handleChange(field, value) {
-    setValues((current) => ({ ...current, [field]: value }));
+    setValues((current) => {
+      if (field === "tipoInspecao" && value === "ANTES_LAVAGEM") {
+        return {
+          ...current,
+          tipoInspecao: value,
+          colaboradorId: "",
+          resultadoPosLavagem: "",
+          motivoNaoConformidade: ""
+        };
+      }
+
+      if (field === "resultadoPosLavagem") {
+        return {
+          ...current,
+          resultadoPosLavagem: value,
+          motivoNaoConformidade: value === "REPROVADO" ? current.motivoNaoConformidade : ""
+        };
+      }
+
+      return { ...current, [field]: value };
+    });
   }
 
   function addPonto() {
@@ -157,6 +194,16 @@ export default function NovaInspecaoPage() {
     try {
       const checklistPontos = checklistToCriticalPoints(checklist);
       const pontosParaSalvar = [...checklistPontos, ...pontosCriticos];
+      const isPosLavagem = values.tipoInspecao === "APOS_LAVAGEM";
+
+      if (isPosLavagem && (!values.colaboradorId || !values.resultadoPosLavagem)) {
+        throw new Error("Informe colaborador e resultado para inspeção pós-lavagem.");
+      }
+
+      if (isPosLavagem && values.resultadoPosLavagem === "REPROVADO" && !values.motivoNaoConformidade) {
+        throw new Error("Informe o motivo da não conformidade para reprovação.");
+      }
+
       const observacoesComChecklist = [values.observacoesGerais.trim(), buildChecklistObservacao(checklist)].filter(Boolean).join("\n\n");
       const response = await createInspecao({
         frotaId: frotaEncontrada?.id ?? values.numeroFrota,
@@ -165,9 +212,11 @@ export default function NovaInspecaoPage() {
         tipoEquipamento: values.tipoEquipamento,
         dataInspecao: new Date(values.dataInspecao).toISOString(),
         tipoInspecao: values.tipoInspecao,
-        status: values.status,
+        status: isPosLavagem && values.resultadoPosLavagem ? values.resultadoPosLavagem : values.status,
+        colaboradorId: isPosLavagem ? values.colaboradorId : null,
+        resultadoPosLavagem: isPosLavagem ? values.resultadoPosLavagem : null,
+        motivoNaoConformidade: isPosLavagem && values.resultadoPosLavagem === "REPROVADO" ? values.motivoNaoConformidade : null,
         observacoesGerais: observacoesComChecklist || null,
-        nomeInspetor: values.nomeInspetor,
         pontosCriticos: pontosParaSalvar.map(({ files: _files, ...ponto }) => ponto)
       });
 
@@ -212,7 +261,8 @@ export default function NovaInspecaoPage() {
           onSubmit: handleSubmit,
           loading: saving,
           isFrotaEncontrada: Boolean(frotaEncontrada),
-          tipoConfirmado
+          tipoConfirmado,
+          colaboradores
         }),
         _jsxs("section", {
           className: "section-card",

@@ -2,7 +2,7 @@ import { jsx, jsxs } from "react/jsx-runtime";
 import Button from "../ui/Button";
 import Input, { Textarea } from "../ui/Input";
 const severidades = ["LEVE", "MEDIA", "GRAVE"];
-const categoriasPontoCritico = ["Ferrugem", "Resquicio de produto", "Fuligem", "Amarelamento", "Mancha"];
+const categoriasPontoCritico = ["Ferrugem", "Mancha", "Amarelamento", "Odor", "Produto residual", "Valvula contaminada", "Outro", "Resquicio de produto", "Fuligem"];
 function isVideoFile(file) {
   return file.type.startsWith("video/");
 }

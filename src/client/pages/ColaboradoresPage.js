@@ -1,6 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { createCollaborator, listCollaborators, updateCollaborator } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
@@ -9,7 +8,6 @@ import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
 
 export default function ColaboradoresPage() {
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [colaboradores, setColaboradores] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -117,7 +115,7 @@ export default function ColaboradoresPage() {
                   className: "frota-card",
                   children: [
                     _jsxs("div", { className: "frota-card__top", children: [_jsxs("div", { children: [_jsx("p", { className: "frota-card__label", children: "Colaborador" }), _jsx("h3", { className: "frota-card__title", children: colaborador.nome })] }), _jsx("span", { className: `status ${colaborador.ativo ? "status--success" : "status--danger"}`, children: colaborador.ativo ? "Ativo" : "Inativo" })] }),
-                    _jsxs("div", { className: "frota-card__actions", children: [_jsx(Button, { type: "button", variant: "secondary", onClick: () => navigate(`/colaboradores/${colaborador.id}`), children: "Ver indicadores" }), _jsx(Button, { type: "button", variant: "ghost", onClick: () => openEdit(colaborador), children: "Editar" }), colaborador.ativo ? _jsx(Button, { type: "button", variant: "danger", onClick: () => void deactivate(colaborador), children: "Desativar" }) : _jsx(Button, { type: "button", variant: "secondary", onClick: () => void updateCollaborator(colaborador.id, { ativo: true }).then((response) => setColaboradores((current) => current.map((item) => (item.id === colaborador.id ? response.colaborador : item)))), children: "Reativar" })] })
+                    _jsxs("div", { className: "frota-card__actions", children: [_jsx(Button, { type: "button", variant: "ghost", onClick: () => openEdit(colaborador), children: "Editar" }), colaborador.ativo ? _jsx(Button, { type: "button", variant: "danger", onClick: () => void deactivate(colaborador), children: "Desativar" }) : _jsx(Button, { type: "button", variant: "secondary", onClick: () => void updateCollaborator(colaborador.id, { ativo: true }).then((response) => setColaboradores((current) => current.map((item) => (item.id === colaborador.id ? response.colaborador : item)))), children: "Reativar" })] })
                   ]
                 }, colaborador.id)
               )

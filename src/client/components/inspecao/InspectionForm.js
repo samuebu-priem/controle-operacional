@@ -1,6 +1,70 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import Button from "../ui/Button";
 import Input, { Textarea } from "../ui/Input";
-export default function InspectionForm({ values, onChange, onConfirmType, onSubmit, loading = false, isFrotaEncontrada, tipoConfirmado }) {
-    return (_jsxs("form", { className: "page-stack", onSubmit: onSubmit, children: [_jsxs("div", { className: "section-card", children: [_jsx("div", { className: "section-head", children: _jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Frota" }), _jsx("h2", { className: "section-title", children: "Dados da frota" })] }) }), _jsxs("div", { className: "form-grid form-grid--two", children: [_jsx(Input, { label: "N\u00FAmero da frota", value: values.numeroFrota, onChange: (e) => onChange("numeroFrota", e.target.value) }), _jsx(Input, { label: "Placa", value: values.placa, onChange: (e) => onChange("placa", e.target.value) }), _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Tipo de tanque" }), _jsxs("select", { className: "input", value: values.tipoEquipamento, onChange: (e) => onChange("tipoEquipamento", e.target.value), children: [_jsx("option", { value: "", children: "Selecione" }), _jsx("option", { value: "Tanque inox", children: "Tanque inox" }), _jsx("option", { value: "Tanque carbono", children: "Tanque carbono" }), _jsx("option", { value: "Carreta tanque", children: "Carreta tanque" }), _jsx("option", { value: "Bitrem tanque", children: "Bitrem tanque" }), _jsx("option", { value: "Isotank", children: "Isotank" }), _jsx("option", { value: "Outro", children: "Outro" })] })] }), _jsx("div", { className: "detail-actions", style: { alignSelf: "end" }, children: _jsx(Button, { variant: "secondary", type: "button", onClick: onConfirmType, children: "Confirmar tipo" }) })] }), _jsx("p", { className: "helper", children: tipoConfirmado ? "Tipo confirmado." : "Confirme o tipo para continuar." }), isFrotaEncontrada ? _jsx("p", { className: "notice notice--success", children: "Frota localizada." }) : null] }), _jsxs("div", { className: "section-card", children: [_jsx("div", { className: "section-head", children: _jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Inspe\u00E7\u00E3o" }), _jsx("h2", { className: "section-title", children: "Dados da inspe\u00E7\u00E3o" })] }) }), _jsxs("div", { className: "form-grid form-grid--two", children: [_jsx(Input, { label: "Data da inspe\u00E7\u00E3o", type: "datetime-local", value: values.dataInspecao, onChange: (e) => onChange("dataInspecao", e.target.value) }), _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Tipo da inspe\u00E7\u00E3o" }), _jsxs("select", { className: "input", value: values.tipoInspecao, onChange: (e) => onChange("tipoInspecao", e.target.value), children: [_jsx("option", { value: "ANTES_LAVAGEM", children: "Antes da lavagem" }), _jsx("option", { value: "APOS_LAVAGEM", children: "Ap\u00F3s lavagem" })] })] }), _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Status" }), _jsxs("select", { className: "input", value: values.status, onChange: (e) => onChange("status", e.target.value), children: [_jsx("option", { value: "APROVADO", children: "Aprovado" }), _jsx("option", { value: "REPROVADO", children: "Reprovado" }), _jsx("option", { value: "COM_OBSERVACAO", children: "Com observa\u00E7\u00E3o" })] })] }), _jsx(Input, { label: "Nome do inspetor", value: values.nomeInspetor, disabled: true, helperText: "Preenchido automaticamente pelo perfil do usuario.", onChange: (e) => onChange("nomeInspetor", e.target.value) }), _jsx(Textarea, { label: "Observa\u00E7\u00F5es gerais", value: values.observacoesGerais, onChange: (e) => onChange("observacoesGerais", e.target.value) })] })] }), _jsx("div", { className: "detail-actions", children: _jsx(Button, { type: "submit", disabled: loading, children: loading ? "Salvando..." : "Salvar inspeção" }) })] }));
+
+const motivosNaoConformidade = [
+  ["FERRUGEM", "Ferrugem"],
+  ["MANCHA", "Mancha"],
+  ["AMARELAMENTO", "Amarelamento"],
+  ["ODOR", "Odor"],
+  ["PRODUTO_RESIDUAL", "Produto residual"],
+  ["VALVULA_CONTAMINADA", "Valvula contaminada"],
+  ["OUTRO", "Outro"]
+];
+
+export default function InspectionForm({
+  values,
+  onChange,
+  onConfirmType,
+  onSubmit,
+  loading = false,
+  isFrotaEncontrada,
+  tipoConfirmado,
+  colaboradores = []
+}) {
+  const isPosLavagem = values.tipoInspecao === "APOS_LAVAGEM";
+
+  return _jsxs("form", {
+    className: "page-stack",
+    onSubmit,
+    children: [
+      _jsxs("div", {
+        className: "section-card",
+        children: [
+          _jsx("div", { className: "section-head", children: _jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Frota" }), _jsx("h2", { className: "section-title", children: "Dados da frota" })] }) }),
+          _jsxs("div", {
+            className: "form-grid form-grid--two",
+            children: [
+              _jsx(Input, { label: "Número da frota", value: values.numeroFrota, onChange: (e) => onChange("numeroFrota", e.target.value) }),
+              _jsx(Input, { label: "Placa", value: values.placa, onChange: (e) => onChange("placa", e.target.value) }),
+              _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Tipo de tanque" }), _jsxs("select", { className: "input", value: values.tipoEquipamento, onChange: (e) => onChange("tipoEquipamento", e.target.value), children: [_jsx("option", { value: "", children: "Selecione" }), _jsx("option", { value: "Tanque inox", children: "Tanque inox" }), _jsx("option", { value: "Tanque carbono", children: "Tanque carbono" }), _jsx("option", { value: "Carreta tanque", children: "Carreta tanque" }), _jsx("option", { value: "Bitrem tanque", children: "Bitrem tanque" }), _jsx("option", { value: "Isotank", children: "Isotank" }), _jsx("option", { value: "Outro", children: "Outro" })] })] }),
+              _jsx("div", { className: "detail-actions", style: { alignSelf: "end" }, children: _jsx(Button, { variant: "secondary", type: "button", onClick: onConfirmType, children: "Confirmar tipo" }) })
+            ]
+          }),
+          _jsx("p", { className: "helper", children: tipoConfirmado ? "Tipo confirmado." : "Confirme o tipo para continuar." }),
+          isFrotaEncontrada ? _jsx("p", { className: "notice notice--success", children: "Frota localizada." }) : null
+        ]
+      }),
+      _jsxs("div", {
+        className: "section-card",
+        children: [
+          _jsx("div", { className: "section-head", children: _jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Inspeção" }), _jsx("h2", { className: "section-title", children: "Dados da inspeção" })] }) }),
+          _jsxs("div", {
+            className: "form-grid form-grid--two",
+            children: [
+              _jsx(Input, { label: "Data da inspeção", type: "datetime-local", value: values.dataInspecao, onChange: (e) => onChange("dataInspecao", e.target.value) }),
+              _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Tipo da inspeção" }), _jsxs("select", { className: "input", value: values.tipoInspecao, onChange: (e) => onChange("tipoInspecao", e.target.value), children: [_jsx("option", { value: "ANTES_LAVAGEM", children: "Pré-lavagem" }), _jsx("option", { value: "APOS_LAVAGEM", children: "Pós-lavagem" })] })] }),
+              !isPosLavagem ? _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Status" }), _jsxs("select", { className: "input", value: values.status, onChange: (e) => onChange("status", e.target.value), children: [_jsx("option", { value: "APROVADO", children: "Aprovado" }), _jsx("option", { value: "REPROVADO", children: "Reprovado" }), _jsx("option", { value: "COM_OBSERVACAO", children: "Com observação" })] })] }) : null,
+              _jsx(Input, { label: "Nome do inspetor", value: values.nomeInspetor, disabled: true, helperText: "Preenchido automaticamente pelo usuário logado.", onChange: (e) => onChange("nomeInspetor", e.target.value) }),
+              isPosLavagem ? _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Colaborador/lavador responsável" }), _jsxs("select", { className: "input", value: values.colaboradorId, onChange: (e) => onChange("colaboradorId", e.target.value), children: [_jsx("option", { value: "", children: "Selecione" }), colaboradores.map((colaborador) => _jsx("option", { value: colaborador.id, children: colaborador.nome }, colaborador.id))] })] }) : null,
+              isPosLavagem ? _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Resultado" }), _jsxs("select", { className: "input", value: values.resultadoPosLavagem, onChange: (e) => onChange("resultadoPosLavagem", e.target.value), children: [_jsx("option", { value: "", children: "Selecione" }), _jsx("option", { value: "APROVADO", children: "APROVADO" }), _jsx("option", { value: "REPROVADO", children: "REPROVADO" })] })] }) : null,
+              isPosLavagem && values.resultadoPosLavagem === "REPROVADO" ? _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Motivo da não conformidade" }), _jsxs("select", { className: "input", value: values.motivoNaoConformidade, onChange: (e) => onChange("motivoNaoConformidade", e.target.value), children: [_jsx("option", { value: "", children: "Selecione" }), motivosNaoConformidade.map(([value, label]) => _jsx("option", { value, children: label }, value))] })] }) : null,
+              _jsx(Textarea, { label: "Observações gerais", value: values.observacoesGerais, onChange: (e) => onChange("observacoesGerais", e.target.value) })
+            ]
+          })
+        ]
+      }),
+      _jsx("div", { className: "detail-actions", children: _jsx(Button, { type: "submit", disabled: loading, children: loading ? "Salvando..." : "Salvar inspeção" }) })
+    ]
+  });
 }

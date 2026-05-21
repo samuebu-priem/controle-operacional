@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../../lib/prisma";
+import { requireAuth, type AuthenticatedRequest } from "../../middleware/auth";
 import { AppError } from "../../middleware/errorHandler";
 import type { Severidade, StatusInspecao, TipoInspecao } from "../../../shared/types";
 
@@ -21,8 +22,10 @@ type CreateInspecaoInput = {
   dataInspecao: string;
   tipoInspecao: TipoInspecao;
   status: StatusInspecao;
+  colaboradorId?: string | null;
+  resultadoPosLavagem?: "APROVADO" | "REPROVADO" | null;
+  motivoNaoConformidade?: string | null;
   observacoesGerais?: string | null;
-  nomeInspetor: string;
   pontosCriticos?: PontoCriticoInput[];
 };
 
@@ -81,8 +84,10 @@ function parseCreateInspecao(body: unknown): CreateInspecaoInput {
   const dataInspecao = asTrimmedString(body.dataInspecao);
   const tipoInspecao = asTrimmedString(body.tipoInspecao) as TipoInspecao;
   const status = asTrimmedString(body.status) as StatusInspecao;
+  const colaboradorId = asTrimmedString(body.colaboradorId);
+  const resultadoPosLavagem = asTrimmedString(body.resultadoPosLavagem) as "APROVADO" | "REPROVADO" | "";
+  const motivoNaoConformidade = asTrimmedString(body.motivoNaoConformidade);
   const observacoesGerais = typeof body.observacoesGerais === "string" ? body.observacoesGerais.trim() : null;
-  const nomeInspetor = asTrimmedString(body.nomeInspetor);
   const pontosCriticos = parsePontosCriticos(body.pontosCriticos);
 
   if (!numeroFrota || !placa || !tipoEquipamento || !dataInspecao || !tipoInspecao || !status) {
@@ -95,6 +100,20 @@ function parseCreateInspecao(body: unknown): CreateInspecaoInput {
 
   if (!["APROVADO", "REPROVADO", "COM_OBSERVACAO"].includes(status)) {
     throw new AppError("status inválido", 400, "BAD_REQUEST");
+  }
+
+  if (tipoInspecao === "APOS_LAVAGEM") {
+    if (!colaboradorId || !resultadoPosLavagem) {
+      throw new AppError("Colaborador e resultado são obrigatórios para inspeção pós-lavagem", 400, "BAD_REQUEST");
+    }
+
+    if (!["APROVADO", "REPROVADO"].includes(resultadoPosLavagem)) {
+      throw new AppError("resultadoPosLavagem inválido", 400, "BAD_REQUEST");
+    }
+
+    if (resultadoPosLavagem === "REPROVADO" && !motivoNaoConformidade) {
+      throw new AppError("Motivo da não conformidade é obrigatório para reprovação", 400, "BAD_REQUEST");
+    }
   }
 
   const parsedDate = new Date(dataInspecao);
@@ -110,8 +129,10 @@ function parseCreateInspecao(body: unknown): CreateInspecaoInput {
     dataInspecao: parsedDate.toISOString(),
     tipoInspecao,
     status,
+    colaboradorId: tipoInspecao === "APOS_LAVAGEM" ? colaboradorId : null,
+    resultadoPosLavagem: tipoInspecao === "APOS_LAVAGEM" && resultadoPosLavagem ? resultadoPosLavagem : null,
+    motivoNaoConformidade: tipoInspecao === "APOS_LAVAGEM" && resultadoPosLavagem === "REPROVADO" ? motivoNaoConformidade : null,
     observacoesGerais,
-    nomeInspetor,
     pontosCriticos
   };
 }
@@ -122,6 +143,9 @@ function formatInspecao(inspecao: {
   dataInspecao: Date;
   tipoInspecao: TipoInspecao;
   status: StatusInspecao;
+  colaboradorId?: string | null;
+  resultadoPosLavagem?: "APROVADO" | "REPROVADO" | null;
+  motivoNaoConformidade?: string | null;
   observacoesGerais: string | null;
   nomeInspetor: string;
   createdAt: Date;
@@ -137,6 +161,13 @@ function formatInspecao(inspecao: {
     createdAt: Date;
     updatedAt: Date;
   };
+  colaborador?: {
+    id: string;
+    nome: string;
+    ativo: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null;
   pontosCriticos: Array<{
     id: string;
     inspecaoId: string;
@@ -185,6 +216,18 @@ function formatInspecao(inspecao: {
     dataInspecao: inspecao.dataInspecao.toISOString(),
     tipoInspecao: inspecao.tipoInspecao,
     status: inspecao.status,
+    colaboradorId: inspecao.colaboradorId ?? null,
+    colaborador: inspecao.colaborador
+      ? {
+          id: inspecao.colaborador.id,
+          nome: inspecao.colaborador.nome,
+          ativo: inspecao.colaborador.ativo,
+          createdAt: inspecao.colaborador.createdAt.toISOString(),
+          updatedAt: inspecao.colaborador.updatedAt.toISOString()
+        }
+      : null,
+    resultadoPosLavagem: inspecao.resultadoPosLavagem ?? null,
+    motivoNaoConformidade: inspecao.motivoNaoConformidade ?? null,
     observacoesGerais: inspecao.observacoesGerais,
     nomeInspetor: inspecao.nomeInspetor,
     createdAt: inspecao.createdAt.toISOString(),
@@ -278,6 +321,7 @@ inspecaoRoutes.get("/", async (req, res, next) => {
       },
       include: {
         frota: true,
+        colaborador: true,
         pontosCriticos: {
           include: {
             fotos: true
@@ -301,9 +345,28 @@ inspecaoRoutes.get("/", async (req, res, next) => {
   }
 });
 
-inspecaoRoutes.post("/", async (req, res, next) => {
+inspecaoRoutes.post("/", requireAuth, async (req, res, next) => {
   try {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      throw new AppError("Usuário não autenticado", 401, "UNAUTHORIZED");
+    }
+
     const payload = parseCreateInspecao(req.body);
+    const user = await prisma.user.findUnique({
+      where: { id: authReq.user.id },
+      select: { id: true, name: true, fullName: true }
+    });
+    const nomeInspetor = user?.fullName?.trim() || user?.name?.trim() || authReq.user.name;
+
+    if (payload.colaboradorId) {
+      const colaborador = await prisma.collaborator.findUnique({
+        where: { id: payload.colaboradorId }
+      });
+      if (!colaborador || !colaborador.ativo) {
+        throw new AppError("Colaborador inválido ou inativo", 400, "BAD_REQUEST");
+      }
+    }
 
     let frota = payload.frotaId
       ? await prisma.frota.findUnique({
@@ -345,8 +408,12 @@ inspecaoRoutes.post("/", async (req, res, next) => {
           dataInspecao: new Date(payload.dataInspecao),
           tipoInspecao: payload.tipoInspecao,
           status: payload.status,
+          colaboradorId: payload.colaboradorId,
+          resultadoPosLavagem: payload.resultadoPosLavagem,
+          motivoNaoConformidade: payload.motivoNaoConformidade,
           observacoesGerais: payload.observacoesGerais,
-          nomeInspetor: payload.nomeInspetor
+          nomeInspetor,
+          userId: user?.id ?? authReq.user!.id
         }
       });
 
@@ -367,6 +434,7 @@ inspecaoRoutes.post("/", async (req, res, next) => {
         where: { id: created.id },
         include: {
           frota: true,
+          colaborador: true,
           pontosCriticos: {
             include: {
               fotos: true
@@ -408,6 +476,7 @@ inspecaoRoutes.get("/frotas/:frotaId/inspecoes", async (req, res, next) => {
       },
       include: {
         frota: true,
+        colaborador: true,
         pontosCriticos: {
           include: {
             fotos: true
@@ -445,6 +514,7 @@ inspecaoRoutes.get("/frotas/:frotaId/historico", async (req, res, next) => {
       },
       include: {
         frota: true,
+        colaborador: true,
         pontosCriticos: {
           include: {
             fotos: true
@@ -474,6 +544,7 @@ inspecaoRoutes.get("/:id", async (req, res, next) => {
       where: { id: req.params.id },
       include: {
         frota: true,
+        colaborador: true,
         pontosCriticos: {
           include: {
             fotos: true
@@ -589,6 +660,7 @@ inspecaoRoutes.patch("/:id", async (req, res, next) => {
       data,
       include: {
         frota: true,
+        colaborador: true,
         pontosCriticos: {
           include: {
             fotos: true
