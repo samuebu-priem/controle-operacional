@@ -11,6 +11,7 @@ import type {
   StatusInspecao,
   TipoInspecao
 } from "../shared/types";
+import { clearAuthSession } from "./utils/auth";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
@@ -28,6 +29,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    if (response.status === 401) {
+      clearAuthSession();
+      window.location.href = "/login";
+    }
     throw new Error(error?.message ?? "Erro ao comunicar com a API");
   }
 
@@ -204,6 +209,10 @@ export async function deleteFoto(fotoId: string) {
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    if (response.status === 401) {
+      clearAuthSession();
+      window.location.href = "/login";
+    }
     throw new Error(error?.message ?? "Erro ao remover foto");
   }
 }
@@ -225,6 +234,10 @@ export async function uploadFotos(inspecaoId: string, formData: FormData) {
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    if (response.status === 401) {
+      clearAuthSession();
+      window.location.href = "/login";
+    }
     throw new Error(error?.message ?? "Erro ao enviar arquivos");
   }
 
@@ -349,6 +362,10 @@ export async function uploadPostWashFotos(inspecaoId: string, formData: FormData
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+    if (response.status === 401) {
+      clearAuthSession();
+      window.location.href = "/login";
+    }
     throw new Error(error?.message ?? "Erro ao enviar arquivos");
   }
 

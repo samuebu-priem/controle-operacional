@@ -1,3 +1,4 @@
+import { clearAuthSession } from "./utils/auth";
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 async function request(path, init) {
     const token = localStorage.getItem("token");
@@ -11,6 +12,10 @@ async function request(path, init) {
     });
     if (!response.ok) {
         const error = (await response.json().catch(() => null));
+        if (response.status === 401) {
+            clearAuthSession();
+            window.location.href = "/login";
+        }
         throw new Error(error?.message ?? "Erro ao comunicar com a API");
     }
     return response.json();
@@ -91,6 +96,10 @@ export async function deleteFoto(fotoId) {
     });
     if (!response.ok) {
         const error = await response.json().catch(() => null);
+        if (response.status === 401) {
+            clearAuthSession();
+            window.location.href = "/login";
+        }
         throw new Error(error?.message ?? "Erro ao remover foto");
     }
 }
@@ -108,6 +117,10 @@ export async function uploadFotos(inspecaoId, formData) {
     });
     if (!response.ok) {
         const error = (await response.json().catch(() => null));
+        if (response.status === 401) {
+            clearAuthSession();
+            window.location.href = "/login";
+        }
         throw new Error(error?.message ?? "Erro ao enviar arquivos");
     }
     return response.json();
@@ -122,6 +135,10 @@ export async function uploadPostWashFotos(inspecaoId, formData) {
     });
     if (!response.ok) {
         const error = await response.json().catch(() => null);
+        if (response.status === 401) {
+            clearAuthSession();
+            window.location.href = "/login";
+        }
         throw new Error(error?.message ?? "Erro ao enviar arquivos");
     }
     return response.json();

@@ -1,8 +1,34 @@
 export function getAuthToken() {
     return localStorage.getItem("token");
 }
+function decodeJwtPayload(token) {
+    const [, payload] = token.split(".");
+    if (!payload)
+        return null;
+    try {
+        const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+        const decoded = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+        return JSON.parse(decoded);
+    }
+    catch {
+        return null;
+    }
+}
+export function isTokenExpired(token) {
+    const payload = decodeJwtPayload(token);
+    if (!payload?.exp)
+        return false;
+    return payload.exp * 1000 <= Date.now();
+}
 export function isAuthenticated() {
-    return Boolean(getAuthToken());
+    const token = getAuthToken();
+    if (!token)
+        return false;
+    if (isTokenExpired(token)) {
+        clearAuthSession();
+        return false;
+    }
+    return true;
 }
 export function isProfileComplete() {
     const user = getAuthUser();
