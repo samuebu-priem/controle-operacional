@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 
 const items = [
   { label: "Inicio", to: "/" },
-  { label: "Expressa", to: "/inspecao-expressa" },
+  { label: "Nova", to: "/nova-inspecao" },
   { label: "Historico", to: "/historico" },
   { label: "Frotas", to: "/registro-frotas" }
 ];

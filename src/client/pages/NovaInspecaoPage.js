@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createInspecao, getFrotaByNumero, listCollaborators, uploadFotos } from "../api";
+import { createInspecao, getFrotaByNumero, listCollaborators, searchFrotas, uploadFotos } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import CriticalPointForm from "../components/inspecao/CriticalPointForm";
@@ -108,12 +108,20 @@ export default function NovaInspecaoPage() {
       void (async () => {
         try {
           const response = await getFrotaByNumero(numero);
-          setFrotaEncontrada(response.frota);
-          if (response.frota) {
+          let frota = response.frota;
+
+          if (!frota) {
+            const searchResponse = await searchFrotas(numero);
+            frota = searchResponse.frotas[0] ?? null;
+          }
+
+          setFrotaEncontrada(frota);
+          if (frota) {
             setValues((current) => ({
               ...current,
-              placa: response.frota?.placa ?? "",
-              tipoEquipamento: response.frota?.tipoEquipamento ?? ""
+              numeroFrota: frota.numeroFrota,
+              placa: frota.placa ?? "",
+              tipoEquipamento: frota.tipoEquipamento ?? ""
             }));
           }
         } catch {

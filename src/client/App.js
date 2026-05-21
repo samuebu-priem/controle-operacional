@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import ColaboradoresPage from "./pages/ColaboradoresPage";
 import HistoricoInspecoesPage from "./pages/HistoricoInspecoesPage";
-import InspecaoExpressaPage from "./pages/InspecaoExpressaPage";
 import InspecaoDetalhePage from "./pages/InspecaoDetalhePage";
 import FrotaHistoricoPage from "./pages/FrotaHistoricoPage";
 import LoginPage from "./pages/LoginPage";
@@ -31,7 +30,6 @@ export default function App() {
       _jsx(Route, { path: "/login", element: _jsx(LoginPage, {}) }),
       _jsx(Route, { path: "/perfil", element: _jsx(ProtectedRoute, { requireProfile: false, children: _jsx(ProfilePage, {}) }) }),
       _jsx(Route, { path: "/", element: _jsx(ProtectedRoute, { children: _jsx(HomePage, {}) }) }),
-      _jsx(Route, { path: "/inspecao-expressa", element: _jsx(ProtectedRoute, { children: _jsx(InspecaoExpressaPage, {}) }) }),
       _jsx(Route, { path: "/nova-inspecao", element: _jsx(ProtectedRoute, { children: _jsx(NovaInspecaoPage, {}) }) }),
       _jsx(Route, { path: "/colaboradores", element: _jsx(ProtectedRoute, { children: _jsx(ColaboradoresPage, {}) }) }),
       _jsx(Route, { path: "/historico", element: _jsx(ProtectedRoute, { children: _jsx(HistoricoInspecoesPage, {}) }) }),
