@@ -1,6 +1,15 @@
 export type TipoInspecao = "ANTES_LAVAGEM" | "APOS_LAVAGEM";
 export type StatusInspecao = "APROVADO" | "REPROVADO" | "COM_OBSERVACAO";
 export type Severidade = "LEVE" | "MEDIA" | "GRAVE";
+export type PostWashInspectionResult = "APROVADO" | "REPROVADO";
+export type PostWashFailureReason =
+  | "FERRUGEM"
+  | "MANCHA"
+  | "AMARELAMENTO"
+  | "ODOR"
+  | "PRODUTO_RESIDUAL"
+  | "VALVULA_CONTAMINADA"
+  | "OUTRO";
 
 export interface UserSession {
   id: string;
@@ -56,6 +65,29 @@ export interface Inspecao {
   updatedAt: string;
   pontosCriticos: PontoCritico[];
   fotos: FotoInspecao[];
+}
+
+export interface Collaborator {
+  id: string;
+  nome: string;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PostWashInspection {
+  id: string;
+  frota: string;
+  colaboradorId: string;
+  colaborador: Collaborator | null;
+  inspetor: string;
+  resultado: PostWashInspectionResult;
+  motivo: PostWashFailureReason | null;
+  motivoLabel: string | null;
+  observacao: string | null;
+  foto: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ResumoRecorrenciaItem {

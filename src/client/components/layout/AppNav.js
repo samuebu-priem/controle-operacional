@@ -4,6 +4,9 @@ import { NavLink } from "react-router-dom";
 const items = [
   { label: "Inicio", to: "/" },
   { label: "Expressa", to: "/inspecao-expressa" },
+  { label: "Pos-lavagem", to: "/pos-lavagem/nova" },
+  { label: "Indicadores", to: "/pos-lavagem/dashboard" },
+  { label: "Colaboradores", to: "/colaboradores" },
   { label: "Nova inspecao", to: "/nova-inspecao" },
   { label: "Historico", to: "/historico" },
   { label: "Registro de frotas", to: "/registro-frotas" }

@@ -107,3 +107,36 @@ export async function openWhatsAppInspectionMessage(inspecao) {
     const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(url, "_blank", "noopener,noreferrer");
 }
+
+function formatDateTimeBR(value) {
+    return new Date(value).toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
+
+export function buildPostWashWhatsAppMessage(inspecao) {
+    const lines = [
+        "📋 INSPEÇÃO PÓS-LAVAGEM",
+        "",
+        `Frota: ${normalizeText(inspecao.frota, "Nao informada")}`,
+        `Data/Hora: ${formatDateTimeBR(inspecao.createdAt)}`,
+        `Inspetor: ${normalizeText(inspecao.inspetor, "Nao informado")}`,
+        `Colaborador Responsável: ${normalizeText(inspecao.colaborador?.nome, "Nao informado")}`,
+        `Resultado: ${inspecao.resultado}`
+    ];
+    if (inspecao.resultado === "REPROVADO") {
+        lines.push("", `Nao Conformidade: ${inspecao.motivoLabel ?? inspecao.motivo ?? "Nao informada"}`);
+    }
+    lines.push("", "Observacao:", normalizeText(inspecao.observacao, "Sem observacao."));
+    return lines.join("\n");
+}
+
+export function openPostWashWhatsAppMessage(inspecao) {
+    const message = buildPostWashWhatsAppMessage(inspecao);
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+}

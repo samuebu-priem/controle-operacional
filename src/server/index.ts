@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { frotaRoutes } from "./modules/frotas/frota.routes";
 import { inspecaoRoutes } from "./modules/inspecoes/inspecao.routes";
+import { postWashRoutes } from "./modules/post-wash/postWash.routes";
 import { fotoRoutes } from "./modules/fotos/foto.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -25,6 +26,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/frotas", frotaRoutes);
 app.use("/api/inspecoes", inspecaoRoutes);
+app.use("/api/post-wash", postWashRoutes);
 app.use("/api", fotoRoutes);
 
 app.use(errorHandler);

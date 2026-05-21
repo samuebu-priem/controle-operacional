@@ -3,9 +3,9 @@ import { NavLink } from "react-router-dom";
 
 const items = [
   { label: "Inicio", to: "/" },
-  { label: "Expressa", to: "/inspecao-expressa" },
-  { label: "Historico", to: "/historico" },
-  { label: "Frotas", to: "/registro-frotas" }
+  { label: "Pos-lavagem", to: "/pos-lavagem/nova" },
+  { label: "Indicadores", to: "/pos-lavagem/dashboard" },
+  { label: "Colab.", to: "/colaboradores" }
 ];
 
 export default function BottomNav() {

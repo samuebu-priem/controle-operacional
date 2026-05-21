@@ -35,6 +35,37 @@ model Frota {
   @@index([placa])
 }
 
+model Collaborator {
+  id                  String               @id @default(cuid())
+  nome                String
+  ativo               Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  postWashInspections PostWashInspection[]
+
+  @@index([nome])
+  @@index([ativo])
+}
+
+model PostWashInspection {
+  id            String                    @id @default(cuid())
+  frota         String
+  colaboradorId String
+  inspetor      String
+  resultado     PostWashInspectionResult
+  motivo        PostWashFailureReason?
+  observacao    String?
+  foto          String?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  colaborador   Collaborator              @relation(fields: [colaboradorId], references: [id])
+
+  @@index([frota])
+  @@index([colaboradorId, createdAt])
+  @@index([resultado])
+  @@index([motivo])
+}
+
 model Inspecao {
   id                String         @id @default(cuid())
   frotaId           String
@@ -103,4 +134,19 @@ enum Severidade {
   LEVE
   MEDIA
   GRAVE
+}
+
+enum PostWashInspectionResult {
+  APROVADO
+  REPROVADO
+}
+
+enum PostWashFailureReason {
+  FERRUGEM
+  MANCHA
+  AMARELAMENTO
+  ODOR
+  PRODUTO_RESIDUAL
+  VALVULA_CONTAMINADA
+  OUTRO
 }

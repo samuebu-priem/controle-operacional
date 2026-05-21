@@ -112,3 +112,69 @@ export async function uploadFotos(inspecaoId, formData) {
     }
     return response.json();
 }
+
+export async function listCollaborators(search = "") {
+    const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+    return request(`/api/post-wash/collaborators${query}`);
+}
+
+export async function createCollaborator(payload) {
+    return request("/api/post-wash/collaborators", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
+}
+
+export async function updateCollaborator(id, payload) {
+    return request(`/api/post-wash/collaborators/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+    });
+}
+
+export async function createPostWashInspection(payload) {
+    return request("/api/post-wash/inspections", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
+}
+
+export async function listPostWashInspections(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.frota?.trim())
+        params.set("frota", filters.frota.trim());
+    if (filters.colaborador?.trim())
+        params.set("colaborador", filters.colaborador.trim());
+    if (filters.colaboradorId?.trim())
+        params.set("colaboradorId", filters.colaboradorId.trim());
+    if (filters.resultado?.trim())
+        params.set("resultado", filters.resultado.trim());
+    if (filters.from?.trim())
+        params.set("from", filters.from.trim());
+    if (filters.to?.trim())
+        params.set("to", filters.to.trim());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request(`/api/post-wash/inspections${query}`);
+}
+
+export async function getPostWashInspection(id) {
+    return request(`/api/post-wash/inspections/${id}`);
+}
+
+export async function getPostWashDashboard(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.colaboradorId?.trim())
+        params.set("colaboradorId", filters.colaboradorId.trim());
+    if (filters.resultado?.trim())
+        params.set("resultado", filters.resultado.trim());
+    if (filters.from?.trim())
+        params.set("from", filters.from.trim());
+    if (filters.to?.trim())
+        params.set("to", filters.to.trim());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request(`/api/post-wash/dashboard${query}`);
+}
+
+export async function getCollaboratorPerformance(id) {
+    return request(`/api/post-wash/collaborators/${id}/performance`);
+}

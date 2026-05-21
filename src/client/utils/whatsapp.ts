@@ -1,4 +1,5 @@
 import type { FotoInspecao, Inspecao, PontoCritico } from "../../shared/types";
+import type { PostWashInspection } from "../../shared/types";
 
 type WhatsAppPontoCritico = PontoCritico & {
   fotos?: FotoInspecao[];
@@ -149,6 +150,42 @@ export async function openWhatsAppInspectionMessage(inspecao: WhatsAppInspection
     window.alert("Este navegador nao permite compartilhar arquivos automaticamente. Vou abrir o WhatsApp apenas com o texto.");
   }
 
+  const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function formatDateTimeBR(value: string) {
+  return new Date(value).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+export function buildPostWashWhatsAppMessage(inspecao: PostWashInspection) {
+  const lines = [
+    "📋 INSPEÇÃO PÓS-LAVAGEM",
+    "",
+    `Frota: ${normalizeText(inspecao.frota, "Nao informada")}`,
+    `Data/Hora: ${formatDateTimeBR(inspecao.createdAt)}`,
+    `Inspetor: ${normalizeText(inspecao.inspetor, "Nao informado")}`,
+    `Colaborador Responsável: ${normalizeText(inspecao.colaborador?.nome, "Nao informado")}`,
+    `Resultado: ${inspecao.resultado}`
+  ];
+
+  if (inspecao.resultado === "REPROVADO") {
+    lines.push("", `Nao Conformidade: ${inspecao.motivoLabel ?? inspecao.motivo ?? "Nao informada"}`);
+  }
+
+  lines.push("", "Observacao:", normalizeText(inspecao.observacao, "Sem observacao."));
+
+  return lines.join("\n");
+}
+
+export function openPostWashWhatsAppMessage(inspecao: PostWashInspection) {
+  const message = buildPostWashWhatsAppMessage(inspecao);
   const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
   window.open(url, "_blank", "noopener,noreferrer");
 }
