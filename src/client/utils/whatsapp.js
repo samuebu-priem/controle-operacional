@@ -56,15 +56,6 @@ async function copyTextToClipboard(text) {
         return false;
     }
 }
-function formatDateTimeBR(value) {
-    return new Date(value).toLocaleString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-    });
-}
 function formatMotivoNaoConformidade(value) {
     const labels = {
         FERRUGEM: "Ferrugem",
@@ -72,7 +63,7 @@ function formatMotivoNaoConformidade(value) {
         AMARELAMENTO: "Amarelamento",
         ODOR: "Odor",
         PRODUTO_RESIDUAL: "Produto residual",
-        VALVULA_CONTAMINADA: "Válvula contaminada",
+        VALVULA_CONTAMINADA: "Valvula contaminada",
         OUTRO: "Outro"
     };
     return value ? labels[value] ?? value : "Nao informada";
@@ -83,18 +74,20 @@ export function buildWhatsAppInspectionMessage(inspecao) {
     if (inspecao.tipoInspecao === "APOS_LAVAGEM") {
         const result = inspecao.resultadoPosLavagem ?? inspecao.status;
         const lines = [
-            "INSPEÇÃO PÓS-LAVAGEM",
+            "📋 *INSPEÇÃO PÓS-LAVAGEM*",
             "",
-            `Frota: ${inspecao.frota?.numeroFrota ?? inspecao.frotaId}`,
-            `Data/Hora: ${formatDateTimeBR(inspecao.dataInspecao)}`,
-            `Inspetor: ${inspetor}`,
-            `Colaborador Responsável: ${normalizeText(inspecao.colaborador?.nome, "Nao informado")}`,
-            `Resultado: ${result}`
+            `*Frota:* ${inspecao.frota?.numeroFrota ?? inspecao.frotaId}`,
+            "",
+            `*Inspetor:* ${inspetor}`,
+            "",
+            `*Colaborador Responsável:* ${normalizeText(inspecao.colaborador?.nome, "Nao informado")}`,
+            "",
+            `*Resultado:* ${result}`
         ];
         if (result === "REPROVADO") {
-            lines.push("", `Não Conformidade: ${formatMotivoNaoConformidade(inspecao.motivoNaoConformidade)}`);
+            lines.push("", `*Não Conformidade:* ${formatMotivoNaoConformidade(inspecao.motivoNaoConformidade)}`);
+            lines.push("", "*Observação:*", observacao);
         }
-        lines.push("", "Observação:", observacao);
         return lines.join("\n");
     }
     const header = [

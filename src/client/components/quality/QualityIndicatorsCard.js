@@ -734,16 +734,19 @@ function QualityIndicatorsCard({ inspecoes }) {
   const [category, setCategory] = useState("ALL");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const filteredInspecoes = useMemo(() => filterByPeriod(inspecoes, period, customStart, customEnd).filter((inspecao) => inspecao.tipoInspecao === "APOS_LAVAGEM"), [inspecoes, period, customStart, customEnd]);
+  const filteredInspecoes = useMemo(() => filterByPeriod(inspecoes, period, customStart, customEnd), [inspecoes, period, customStart, customEnd]);
+  const postWashInspecoes = useMemo(() => filteredInspecoes.filter((inspecao) => inspecao.tipoInspecao === "APOS_LAVAGEM"), [filteredInspecoes]);
   const categoryOptions = useMemo(() => buildCategoryOptions(filteredInspecoes), [filteredInspecoes]);
   const totalInspecoes = filteredInspecoes.length;
-  const totalAprovadas = filteredInspecoes.filter((inspecao) => (inspecao.resultadoPosLavagem ?? inspecao.status) === "APROVADO").length;
-  const taxaAprovacao = totalInspecoes > 0 ? Math.round(totalAprovadas / totalInspecoes * 100) : 0;
+  const totalPostWash = postWashInspecoes.length;
+  const totalAprovadas = postWashInspecoes.filter((inspecao) => (inspecao.resultadoPosLavagem ?? inspecao.status) === "APROVADO").length;
+  const totalReprovadas = postWashInspecoes.filter((inspecao) => (inspecao.resultadoPosLavagem ?? inspecao.status) === "REPROVADO").length;
+  const taxaAprovacao = totalPostWash > 0 ? Math.round(totalAprovadas / totalPostWash * 100) : 0;
   const topIssues = useMemo(() => buildQualityAnalytics(filteredInspecoes, category), [filteredInspecoes, category]);
   const leadingIssue = topIssues.items[0]?.label ?? "\u2014";
   const collaboratorIndicators = useMemo(() => {
     const map = /* @__PURE__ */ new Map();
-    filteredInspecoes.forEach((inspecao) => {
+    postWashInspecoes.forEach((inspecao) => {
       const id = inspecao.colaboradorId ?? "sem-colaborador";
       const current = map.get(id) ?? {
         id,
@@ -758,7 +761,7 @@ function QualityIndicatorsCard({ inspecoes }) {
       map.set(id, current);
     });
     return [...map.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  }, [filteredInspecoes]);
+  }, [postWashInspecoes]);
   function openIssuePage(item) {
     const params = new URLSearchParams();
     params.set("labels", (item.labels ?? [item.label]).join("|"));
@@ -782,7 +785,7 @@ function QualityIndicatorsCard({ inspecoes }) {
   return /* @__PURE__ */ jsxs("section", { className: "quality-section", children: [
     /* @__PURE__ */ jsx("div", { className: "section-head quality-section__head", children: /* @__PURE__ */ jsxs("div", { children: [
       /* @__PURE__ */ jsx("p", { className: "card-label", children: "Indicadores de Qualidade" }),
-      /* @__PURE__ */ jsx("h2", { className: "section-title", children: "Desempenho e nao conformidades pos-lavagem" })
+      /* @__PURE__ */ jsx("h2", { className: "section-title", children: "Recorrencias encontradas nas inspeções" })
     ] }) }),
     /* @__PURE__ */ jsxs(Card, { className: "quality-card card--elevated", children: [
       /* @__PURE__ */ jsxs("div", { className: "quality-toolbar", children: [
@@ -848,29 +851,18 @@ function QualityIndicatorsCard({ inspecoes }) {
       ] }),
       /* @__PURE__ */ jsxs("div", { className: "quality-kpis", children: [
         /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
-          /* @__PURE__ */ jsx("span", { children: "Inspecoes pos-lavagem" }),
+          /* @__PURE__ */ jsx("span", { children: "Total inspeções" }),
           /* @__PURE__ */ jsx("strong", { children: totalInspecoes })
         ] }),
         /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
-          /* @__PURE__ */ jsx("span", { children: "Aprovacoes" }),
-          /* @__PURE__ */ jsx("strong", { children: totalAprovadas })
+          /* @__PURE__ */ jsx("span", { children: "Com ponto crítico" }),
+          /* @__PURE__ */ jsx("strong", { children: topIssues.withCriticalPoints })
         ] }),
         /* @__PURE__ */ jsxs("article", { className: "quality-kpi", children: [
-          /* @__PURE__ */ jsx("span", { children: "Taxa aprovacao" }),
-          /* @__PURE__ */ jsx("strong", { children: `${taxaAprovacao}%` })
+          /* @__PURE__ */ jsx("span", { children: "Recorrência líder" }),
+          /* @__PURE__ */ jsx("strong", { children: leadingIssue })
         ] })
       ] }),
-      collaboratorIndicators.length > 0 ? /* @__PURE__ */ jsxs("div", { className: "quality-table-panel", children: [
-        /* @__PURE__ */ jsx("div", { className: "quality-table-panel__head", children: /* @__PURE__ */ jsxs("div", { children: [
-          /* @__PURE__ */ jsx("p", { className: "card-label", children: "Historico por colaborador" }),
-          /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Indicadores para melhoria continua" })
-        ] }) }),
-        /* @__PURE__ */ jsx("div", { className: "recurrence-summary", children: collaboratorIndicators.map((item) => /* @__PURE__ */ jsxs("article", { children: [
-          /* @__PURE__ */ jsx("span", { children: item.nome }),
-          /* @__PURE__ */ jsx("strong", { children: `${item.aprovadas}/${item.total}` }),
-          /* @__PURE__ */ jsxs("small", { className: "helper", children: [item.reprovadas, " pontos de atencao"] })
-        ] }, item.id)) })
-      ] }) : null,
       /* @__PURE__ */ jsxs("div", { className: "quality-layout", children: [
         /* @__PURE__ */ jsxs("div", { className: "quality-chart-panel", children: [
           topIssues.items.length > 0 ? /* @__PURE__ */ jsx(DonutChart, { items: topIssues.items }) : /* @__PURE__ */ jsx("p", { className: "helper", children: "Sem ocorr\xEAncias no per\xEDodo." }),
@@ -914,7 +906,19 @@ function QualityIndicatorsCard({ inspecoes }) {
             ] }, item.label)) })
           ] }),
         ] })
-      ] })
+      ] }),
+      collaboratorIndicators.length > 0 ? /* @__PURE__ */ jsxs("div", { className: "quality-table-panel", children: [
+        /* @__PURE__ */ jsx("div", { className: "quality-table-panel__head", children: /* @__PURE__ */ jsxs("div", { children: [
+          /* @__PURE__ */ jsx("p", { className: "card-label", children: "Desempenho pós-lavagem" }),
+          /* @__PURE__ */ jsx("h3", { className: "section-title", children: "Indicadores por colaborador" }),
+          /* @__PURE__ */ jsxs("p", { className: "helper", children: [totalPostWash, " inspeções pós-lavagem no período • ", totalAprovadas, " aprovações • ", totalReprovadas, " reprovações • ", taxaAprovacao, "% de aprovação"] })
+        ] }) }),
+        /* @__PURE__ */ jsx("div", { className: "recurrence-summary", children: collaboratorIndicators.map((item) => /* @__PURE__ */ jsxs("article", { children: [
+          /* @__PURE__ */ jsx("span", { children: item.nome }),
+          /* @__PURE__ */ jsx("strong", { children: `${item.aprovadas}/${item.total}` }),
+          /* @__PURE__ */ jsxs("small", { className: "helper", children: [item.reprovadas, " pontos de atenção"] })
+        ] }, item.id)) })
+      ] }) : null
     ] })
   ] });
 }
