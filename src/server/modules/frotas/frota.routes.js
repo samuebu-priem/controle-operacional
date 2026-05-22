@@ -71,9 +71,19 @@ frotaRoutes.get("/numero/:numeroFrota/historico", async (req, res, next) => {
         if (!numeroFrota) {
             throw new AppError("Número da frota inválido", 400, "BAD_REQUEST");
         }
-        const frota = await prisma.frota.findUnique({
-            where: { numeroFrota }
-        });
+        const frota =
+            (await prisma.frota.findUnique({
+                where: { numeroFrota }
+            })) ??
+            (await prisma.frota.findFirst({
+                where: {
+                    numeroFrota: {
+                        equals: numeroFrota,
+                        mode: "insensitive"
+                    }
+                }
+            }));
+
         if (!frota) {
             return res.json({
                 frota: null,

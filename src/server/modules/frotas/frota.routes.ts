@@ -97,17 +97,6 @@ frotaRoutes.get("/numero/:numeroFrota/historico", async (req, res, next) => {
             mode: "insensitive"
           }
         }
-      })) ??
-      (await prisma.frota.findFirst({
-        where: {
-          numeroFrota: {
-            contains: numeroFrota,
-            mode: "insensitive"
-          }
-        },
-        orderBy: {
-          numeroFrota: "asc"
-        }
       }));
 
     if (!frota) {
