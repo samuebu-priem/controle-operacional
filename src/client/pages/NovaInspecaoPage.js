@@ -112,7 +112,11 @@ export default function NovaInspecaoPage() {
 
           if (!frota) {
             const searchResponse = await searchFrotas(numero);
-            frota = searchResponse.frotas[0] ?? null;
+            // Só auto-completar se houver EXATAMENTE UMA frota que começa com o prefixo
+            if (searchResponse.frotas.length === 1) {
+              frota = searchResponse.frotas[0];
+            }
+            // Se matches > 1: deixa sem frota (frotaEncontrada fica null)
           }
 
           setFrotaEncontrada(frota);

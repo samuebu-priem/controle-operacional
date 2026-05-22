@@ -62,9 +62,9 @@ frotaRoutes.get("/search", async (req, res, next) => {
     const frotas = await prisma.frota.findMany({
       where: {
         OR: [
-          { numeroFrota: { contains: query, mode: "insensitive" } },
-          { placa: { contains: query, mode: "insensitive" } },
-          { tipoEquipamento: { contains: query, mode: "insensitive" } }
+          { numeroFrota: { startsWith: query, mode: "insensitive" } },
+          { placa: { startsWith: query, mode: "insensitive" } },
+          { tipoEquipamento: { startsWith: query, mode: "insensitive" } }
         ]
       },
       orderBy: {
