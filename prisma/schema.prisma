@@ -14,9 +14,12 @@ model User {
   jobTitle  String?
   email     String     @unique
   password  String
+  role      String     @default("INSPETOR")
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   inspecoes Inspecao[]
+
+  @@index([role])
 }
 
 model Frota {

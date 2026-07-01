@@ -173,6 +173,41 @@ export async function getInspecaoById(id: string) {
   }>(`/api/inspecoes/${id}`);
 }
 
+export async function getDesempenhoDashboard(filters: { range?: string; from?: string; to?: string } = {}) {
+  const params = new URLSearchParams();
+  if (filters.range?.trim()) params.set("range", filters.range.trim());
+  if (filters.from?.trim()) params.set("from", filters.from.trim());
+  if (filters.to?.trim()) params.set("to", filters.to.trim());
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<{
+    range: string;
+    filters: { from: string | null; to: string | null };
+    summary: Array<{
+      name: string;
+      totalInspecoes: number;
+      todayInspecoes: number;
+      weekInspecoes: number;
+      monthInspecoes: number;
+      productivity: number;
+      nonConformities: number;
+      nonConformityRate: number;
+      topCriteria: Array<{ label: string; count: number }>;
+    }>;
+    comparison: Array<{
+      name: string;
+      totalInspecoes: number;
+      todayInspecoes: number;
+      weekInspecoes: number;
+      monthInspecoes: number;
+      productivity: number;
+      nonConformities: number;
+      nonConformityRate: number;
+      topCriterion: string;
+    }>;
+  }>(`/api/inspecoes/desempenho${query}`);
+}
+
 export async function updateInspecao(
   inspecaoId: string,
   payload: {

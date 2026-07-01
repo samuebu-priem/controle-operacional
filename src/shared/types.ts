@@ -17,6 +17,7 @@ export interface UserSession {
   fullName: string | null;
   jobTitle: string | null;
   email: string;
+  role: string;
   token: string;
 }
 

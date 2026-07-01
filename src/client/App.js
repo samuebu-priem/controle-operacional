@@ -10,15 +10,20 @@ import NovaInspecaoPage from "./pages/NovaInspecaoPage";
 import ProfilePage from "./pages/ProfilePage";
 import RegistroFrotasPage from "./pages/RegistroFrotasPage";
 import RecorrenciaDetalhePage from "./pages/RecorrenciaDetalhePage";
-import { isAuthenticated, isProfileComplete } from "./utils/auth";
+import PainelGerencialPage from "./pages/PainelGerencialPage";
+import { getAuthRole, isAuthenticated, isProfileComplete } from "./utils/auth";
 
-function ProtectedRoute({ children, requireProfile = true }) {
+function ProtectedRoute({ children, requireProfile = true, requireManager = false }) {
   if (!isAuthenticated()) {
     return _jsx(Navigate, { to: "/login", replace: true });
   }
 
   if (requireProfile && !isProfileComplete()) {
     return _jsx(Navigate, { to: "/perfil", replace: true });
+  }
+
+  if (requireManager && getAuthRole() !== "GESTOR") {
+    return _jsx(Navigate, { to: "/", replace: true });
   }
 
   return children;
@@ -36,6 +41,7 @@ export default function App() {
       _jsx(Route, { path: "/frotas/:id/historico", element: _jsx(ProtectedRoute, { children: _jsx(FrotaHistoricoPage, {}) }) }),
       _jsx(Route, { path: "/recorrencias/:categoria", element: _jsx(ProtectedRoute, { children: _jsx(RecorrenciaDetalhePage, {}) }) }),
       _jsx(Route, { path: "/registro-frotas", element: _jsx(ProtectedRoute, { children: _jsx(RegistroFrotasPage, {}) }) }),
+      _jsx(Route, { path: "/painel-gerencial", element: _jsx(ProtectedRoute, { requireManager: true, children: _jsx(PainelGerencialPage, {}) }) }),
       _jsx(Route, { path: "/inspecao/:id", element: _jsx(ProtectedRoute, { children: _jsx(InspecaoDetalhePage, {}) }) }),
       _jsx(Route, { path: "*", element: _jsx(Navigate, { to: "/", replace: true }) })
     ]

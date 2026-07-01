@@ -7,6 +7,7 @@ export interface AuthTokenPayload {
   sub: string;
   name: string;
   email: string;
+  role?: string;
 }
 
 function getSecret() {

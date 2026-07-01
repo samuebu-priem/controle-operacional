@@ -1,10 +1,12 @@
 import type { NextFunction, Request, Response } from "express";
 import { verifyAuthToken } from "../lib/jwt.js";
+import { normalizeUserRole } from "./permissions";
 
 export interface AuthenticatedUser {
   id: string;
   name: string;
   email: string;
+  role?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -28,7 +30,8 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
     req.user = {
       id: payload.sub,
       name: payload.name,
-      email: payload.email
+      email: payload.email,
+      role: normalizeUserRole(payload.role)
     };
     return next();
   } catch {

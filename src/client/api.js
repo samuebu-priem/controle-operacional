@@ -77,6 +77,17 @@ export async function listInspecoes(filters = {}) {
 export async function getInspecaoById(id) {
     return request(`/api/inspecoes/${id}`);
 }
+export async function getDesempenhoDashboard(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.range?.trim())
+        params.set("range", filters.range.trim());
+    if (filters.from?.trim())
+        params.set("from", filters.from.trim());
+    if (filters.to?.trim())
+        params.set("to", filters.to.trim());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request(`/api/inspecoes/desempenho${query}`);
+}
 export async function updateInspecao(inspecaoId, payload) {
     return request(`/api/inspecoes/${inspecaoId}`, {
         method: "PATCH",

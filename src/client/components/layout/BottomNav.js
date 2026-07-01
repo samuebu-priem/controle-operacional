@@ -1,18 +1,23 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { NavLink } from "react-router-dom";
+import { isManager } from "../../utils/auth";
 
 const items = [
   { label: "Inicio", to: "/" },
   { label: "Nova", to: "/nova-inspecao" },
   { label: "Historico", to: "/historico" },
-  { label: "Frotas", to: "/registro-frotas" }
+  { label: "Frotas", to: "/registro-frotas" },
+  { label: "Painel", to: "/painel-gerencial" }
 ];
 
 export default function BottomNav() {
+  const canSeeManagerArea = isManager();
+  const visibleItems = items.filter((item) => item.to !== "/painel-gerencial" || canSeeManagerArea);
+
   return _jsx("nav", {
     className: "bottom-nav",
     "aria-label": "Navegacao principal",
-    children: items.map((item) =>
+    children: visibleItems.map((item) =>
       _jsx(
         NavLink,
         {

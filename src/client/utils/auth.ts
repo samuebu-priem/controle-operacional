@@ -42,6 +42,15 @@ export function isProfileComplete() {
   return Boolean(user?.fullName?.trim() && user?.jobTitle?.trim());
 }
 
+export function getAuthRole() {
+  const role = getAuthUser()?.role?.toUpperCase();
+  return role === "GESTOR" ? "GESTOR" : "INSPETOR";
+}
+
+export function isManager() {
+  return getAuthRole() === "GESTOR";
+}
+
 export function saveAuthSession(user: StoredUser, token: string) {
   localStorage.setItem("token", token);
   localStorage.setItem("user", JSON.stringify(user));

@@ -7,6 +7,11 @@ import { AppError } from "../../middleware/errorHandler";
 
 export const authRoutes = Router();
 
+function getEffectiveRole(user: { role?: string | null }) {
+  const normalizedRole = (user.role ?? "INSPETOR").toUpperCase();
+  return normalizedRole === "GESTOR" ? "GESTOR" : "INSPETOR";
+}
+
 authRoutes.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body ?? {};
@@ -29,10 +34,12 @@ authRoutes.post("/login", async (req, res, next) => {
       throw new AppError("Credenciais inválidas", 401, "UNAUTHORIZED");
     }
 
+    const role = getEffectiveRole(user);
     const token = signAuthToken({
       sub: user.id,
       name: user.name,
-      email: user.email
+      email: user.email,
+      role
     });
 
     return res.json({
@@ -41,7 +48,8 @@ authRoutes.post("/login", async (req, res, next) => {
         name: user.name,
         fullName: user.fullName,
         jobTitle: user.jobTitle,
-        email: user.email
+        email: user.email,
+        role
       },
       token
     });
@@ -66,6 +74,7 @@ authRoutes.get("/me", requireAuth, async (req, res, next) => {
         fullName: true,
         jobTitle: true,
         email: true,
+        role: true,
         createdAt: true,
         updatedAt: true
       }
@@ -75,8 +84,13 @@ authRoutes.get("/me", requireAuth, async (req, res, next) => {
       throw new AppError("Usuário não encontrado", 404, "NOT_FOUND");
     }
 
+    const role = getEffectiveRole(user);
+
     return res.json({
-      user
+      user: {
+        ...user,
+        role
+      }
     });
   } catch (error) {
     return next(error);
@@ -116,12 +130,15 @@ authRoutes.patch("/me/profile", requireAuth, async (req, res, next) => {
         fullName: true,
         jobTitle: true,
         email: true,
+        role: true,
         createdAt: true,
         updatedAt: true
       }
     });
 
-    return res.json({ user });
+    const role = getEffectiveRole(user);
+
+    return res.json({ user: { ...user, role } });
   } catch (error) {
     return next(error);
   }

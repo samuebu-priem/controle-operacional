@@ -3,6 +3,8 @@ import { prisma } from "../../lib/prisma";
 import { requireAuth, type AuthenticatedRequest } from "../../middleware/auth";
 import { AppError } from "../../middleware/errorHandler";
 import type { Severidade, StatusInspecao, TipoInspecao } from "../../../shared/types";
+import { buildInspectorPerformance } from "./performance.utils";
+import { requireGestor } from "../../middleware/permissions";
 
 export const inspecaoRoutes = Router();
 
@@ -302,6 +304,51 @@ function buildRecorrencia(inspecoes: Array<{
   };
 }
 
+function parseDateFilter(value: string | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new AppError("Filtro de data inválido", 400, "BAD_REQUEST");
+  }
+  return parsed;
+}
+
+function resolveDateRange(range: string, fromValue: string | undefined, toValue: string | undefined) {
+  const end = parseDateFilter(toValue) ?? new Date();
+  const start = parseDateFilter(fromValue);
+
+  if (range === "custom" && start) {
+    return { start, end };
+  }
+
+  const startOfDay = new Date(end);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(end);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  if (range === "today") {
+    return { start: startOfDay, end: endOfDay };
+  }
+
+  const weekStart = new Date(end);
+  weekStart.setDate(end.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+
+  if (range === "week") {
+    return { start: weekStart, end: endOfDay };
+  }
+
+  const monthStart = new Date(end);
+  monthStart.setDate(end.getDate() - 29);
+  monthStart.setHours(0, 0, 0, 0);
+
+  if (range === "month") {
+    return { start: monthStart, end: endOfDay };
+  }
+
+  return { start: undefined, end: undefined };
+}
+
 inspecaoRoutes.get("/", async (req, res, next) => {
   try {
     const search = asTrimmedString(req.query.search);
@@ -339,6 +386,106 @@ inspecaoRoutes.get("/", async (req, res, next) => {
           fotos: inspecao.fotos
         })
       )
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+inspecaoRoutes.get("/desempenho", requireAuth, requireGestor, async (req, res, next) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      throw new AppError("Usuário não autenticado", 401, "UNAUTHORIZED");
+    }
+
+    const range = asTrimmedString(req.query.range).toLowerCase() || "month";
+    const fromValue = asTrimmedString(req.query.from);
+    const toValue = asTrimmedString(req.query.to);
+    const { start, end } = resolveDateRange(range, fromValue, toValue);
+
+    const where = start && end ? { dataInspecao: { gte: start, lte: end } } : undefined;
+
+    const inspecoes = await prisma.inspecao.findMany({
+      where,
+      orderBy: { dataInspecao: "asc" },
+      include: {
+        pontosCriticos: true
+      }
+    });
+
+    const rows = new Map<string, { inspector: string; totalInspecoes: number; periodInspecoes: number; todayInspecoes: number; weekInspecoes: number; monthInspecoes: number; nonConformities: number; criteria: string[] }>();
+
+    const endDate = end ?? new Date();
+    const todayStart = new Date(endDate);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(endDate);
+    todayEnd.setHours(23, 59, 59, 999);
+    const weekStart = new Date(endDate);
+    weekStart.setDate(endDate.getDate() - 6);
+    weekStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(endDate);
+    monthStart.setDate(endDate.getDate() - 29);
+    monthStart.setHours(0, 0, 0, 0);
+
+    for (const inspecao of inspecoes) {
+      const inspectorName = inspecao.nomeInspetor?.trim() || "Sem inspetor";
+      const current = rows.get(inspectorName) ?? {
+        inspector: inspectorName,
+        totalInspecoes: 0,
+        periodInspecoes: 0,
+        todayInspecoes: 0,
+        weekInspecoes: 0,
+        monthInspecoes: 0,
+        nonConformities: 0,
+        criteria: [] as string[]
+      };
+
+      current.totalInspecoes += 1;
+      current.periodInspecoes += 1;
+      if (inspecao.dataInspecao >= todayStart && inspecao.dataInspecao <= todayEnd) {
+        current.todayInspecoes += 1;
+      }
+      if (inspecao.dataInspecao >= weekStart && inspecao.dataInspecao <= todayEnd) {
+        current.weekInspecoes += 1;
+      }
+      if (inspecao.dataInspecao >= monthStart && inspecao.dataInspecao <= todayEnd) {
+        current.monthInspecoes += 1;
+      }
+      current.nonConformities += inspecao.pontosCriticos.length;
+      current.criteria.push(...inspecao.pontosCriticos.map((ponto) => ponto.categoria));
+      rows.set(inspectorName, current);
+    }
+
+    const summary = buildInspectorPerformance(Array.from(rows.values()).map((row) => ({
+      inspector: row.inspector,
+      totalInspecoes: row.totalInspecoes,
+      periodInspecoes: row.periodInspecoes,
+      todayInspecoes: row.todayInspecoes,
+      weekInspecoes: row.weekInspecoes,
+      monthInspecoes: row.monthInspecoes,
+      nonConformities: row.nonConformities,
+      criteria: row.criteria
+    })));
+
+    return res.json({
+      range,
+      filters: {
+        from: fromValue || null,
+        to: toValue || null
+      },
+      summary,
+      comparison: summary.map((item) => ({
+        name: item.name,
+        totalInspecoes: item.totalInspecoes,
+        todayInspecoes: item.todayInspecoes,
+        weekInspecoes: item.weekInspecoes,
+        monthInspecoes: item.monthInspecoes,
+        productivity: item.productivity,
+        nonConformities: item.nonConformities,
+        nonConformityRate: item.nonConformityRate,
+        topCriterion: item.topCriteria[0]?.label ?? "—"
+      }))
     });
   } catch (error) {
     return next(error);
