@@ -35,10 +35,18 @@ export function isProfileComplete() {
     return Boolean(user?.fullName?.trim() && user?.jobTitle?.trim());
 }
 export function getAuthRole() {
+    const token = getAuthToken();
+    if (token) {
+        const payload = decodeJwtPayload(token);
+        const tokenRole = payload?.role?.toUpperCase();
+        if (tokenRole === "GESTOR" || tokenRole === "INSPETOR") {
+            return tokenRole;
+        }
+    }
     const role = getAuthUser()?.role?.toUpperCase();
     return role === "GESTOR" ? "GESTOR" : "INSPETOR";
 }
-export function isManager() {
+export function isGestor() {
     return getAuthRole() === "GESTOR";
 }
 export function saveAuthSession(user, token) {

@@ -30,6 +30,7 @@ export function verifyAuthToken(token: string): AuthTokenPayload {
   return {
     sub: decoded.sub,
     name: decoded.name,
-    email: decoded.email
+    email: decoded.email,
+    role: decoded.role
   };
 }

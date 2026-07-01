@@ -6,14 +6,14 @@ export function getAuthToken() {
   return localStorage.getItem("token");
 }
 
-function decodeJwtPayload(token: string): { exp?: number } | null {
+function decodeJwtPayload(token: string): { exp?: number; role?: string } | null {
   const [, payload] = token.split(".");
   if (!payload) return null;
 
   try {
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
     const decoded = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
-    return JSON.parse(decoded) as { exp?: number };
+    return JSON.parse(decoded) as { exp?: number; role?: string };
   } catch {
     return null;
   }
@@ -43,11 +43,20 @@ export function isProfileComplete() {
 }
 
 export function getAuthRole() {
+  const token = getAuthToken();
+  if (token) {
+    const payload = decodeJwtPayload(token);
+    const tokenRole = payload?.role?.toUpperCase();
+    if (tokenRole === "GESTOR" || tokenRole === "INSPETOR") {
+      return tokenRole;
+    }
+  }
+
   const role = getAuthUser()?.role?.toUpperCase();
   return role === "GESTOR" ? "GESTOR" : "INSPETOR";
 }
 
-export function isManager() {
+export function isGestor() {
   return getAuthRole() === "GESTOR";
 }
 

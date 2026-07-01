@@ -16,6 +16,7 @@ export function verifyAuthToken(token) {
     return {
         sub: decoded.sub,
         name: decoded.name,
-        email: decoded.email
+        email: decoded.email,
+        role: decoded.role
     };
 }

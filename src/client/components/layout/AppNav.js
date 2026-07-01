@@ -1,6 +1,6 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { NavLink } from "react-router-dom";
-import { isManager } from "../../utils/auth";
+import { isGestor } from "../../utils/auth";
 
 const items = [
   { label: "Inicio", to: "/" },
@@ -12,7 +12,7 @@ const items = [
 ];
 
 export default function AppNav() {
-  const canSeeManagerArea = isManager();
+  const canSeeManagerArea = isGestor();
   const visibleItems = items.filter((item) => item.to !== "/painel-gerencial" || canSeeManagerArea);
 
   return _jsx("nav", {
