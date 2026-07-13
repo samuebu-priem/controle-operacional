@@ -210,6 +210,10 @@ export async function saveYardMap(id, payload) {
     return request(`/api/yard/maps/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
 }
 
+export async function deleteYardMap(id) {
+    return request(`/api/yard/maps/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function uploadYardMapReference(id, file) {
     const formData = new FormData();
     formData.append("image", file);

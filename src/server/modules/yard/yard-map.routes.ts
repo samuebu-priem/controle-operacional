@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import sharp from "sharp";
@@ -100,6 +100,34 @@ yardMapRoutes.put("/:id", requirePermission("yard:map-edit"), async (req, res, n
     if (result.count === 0) throw new AppError("O mapa foi alterado por outro usuário. Recarregue antes de salvar.", 409, "REVISION_CONFLICT");
     const map = await prisma.yardMap.findUnique({ where: { id: req.params.id } });
     return res.json({ map });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+yardMapRoutes.delete("/:id", requirePermission("yard:map-edit"), async (req, res, next) => {
+  try {
+    const map = await prisma.yardMap.findUnique({ where: { id: req.params.id } });
+    if (!map) throw new AppError("Mapa não encontrado.", 404, "NOT_FOUND");
+
+    await prisma.yardMap.delete({ where: { id: map.id } });
+
+    const rawDocument = map.document && typeof map.document === "object" && !Array.isArray(map.document)
+      ? map.document as Record<string, unknown>
+      : null;
+    const settings = rawDocument?.settings && typeof rawDocument.settings === "object" && !Array.isArray(rawDocument.settings)
+      ? rawDocument.settings as Record<string, unknown>
+      : null;
+    const background = settings?.background && typeof settings.background === "object" && !Array.isArray(settings.background)
+      ? settings.background as Record<string, unknown>
+      : null;
+    const referenceUrl = typeof background?.url === "string" ? background.url : "";
+    const match = referenceUrl.match(/^\/uploads\/yard-maps\/([a-z0-9_-]+\.jpg)$/i);
+    if (match) {
+      await unlink(path.resolve(process.cwd(), "uploads", "yard-maps", match[1])).catch(() => undefined);
+    }
+
+    return res.json({ deleted: true, id: map.id });
   } catch (error) {
     return next(error);
   }

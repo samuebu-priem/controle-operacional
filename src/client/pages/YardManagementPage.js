@@ -1,5 +1,5 @@
 import { createElement as h, useEffect, useMemo, useRef, useState } from "react";
-import { createYardMap, getYardFleetLocation, getYardHistory, getYardMap, listStaleYardLocations, listYardFleets, listYardLocations, listYardMaps, saveYardMap, updateYardFleetLocation, uploadYardMapReference } from "../api";
+import { createYardMap, deleteYardMap, getYardFleetLocation, getYardHistory, getYardMap, listStaleYardLocations, listYardFleets, listYardLocations, listYardMaps, saveYardMap, updateYardFleetLocation, uploadYardMapReference } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import Button from "../components/ui/Button";
@@ -163,6 +163,28 @@ export default function YardManagementPage() {
             setActiveMap(result.map); setMapDocument(result.map.document); setMaps((current) => current.map((item) => item.id === result.map.id ? { ...item, revision: result.map.revision, updatedAt: result.map.updatedAt } : item)); setSuccess("Mapa salvo com sucesso.");
         } catch (err) { setError(err instanceof Error ? err.message : "Falha ao salvar mapa."); }
         finally { setMapSaving(false); }
+    }
+
+    async function removeCurrentMap() {
+        if (!activeMap) return;
+        const confirmed = window.confirm(`Excluir definitivamente o mapa “${activeMap.name}”?\n\nAs localizações e o histórico das frotas serão preservados.`);
+        if (!confirmed) return;
+        setLoading(true); setError(""); setSuccess("");
+        try {
+            await deleteYardMap(activeMap.id);
+            const remaining = maps.filter((item) => item.id !== activeMap.id);
+            setMaps(remaining); setEditMode(false); setSelectedFleet(null); setSelectedLocation(null); setDraft(null); setSectorFilter("ALL");
+            if (remaining.length) {
+                await selectBranch(remaining[0].branch);
+            } else {
+                setActiveMap(null); setMapDocument(null); setLocations([]);
+            }
+            setSuccess("Mapa excluído. As localizações e o histórico foram preservados.");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Falha ao excluir mapa.");
+        } finally {
+            setLoading(false);
+        }
     }
 
     async function uploadReference(file) {
@@ -421,7 +443,8 @@ export default function YardManagementPage() {
                 ),
                 isGestor() ? h("div", { className: "yard-map-admin-actions" },
                     h(Button, { variant: "secondary", onClick: () => void createMapForBranch() }, "Novo mapa"),
-                    h(Button, { disabled: !activeMap, onClick: () => setEditMode(true) }, "Editar mapa")
+                    h(Button, { disabled: !activeMap, onClick: () => setEditMode(true) }, "Editar mapa"),
+                    h(Button, { variant: "ghost", disabled: !activeMap, onClick: () => void removeCurrentMap() }, "Excluir mapa")
                 ) : null
             ),
             error ? h("p", { className: "notice notice--error", role: "alert" }, error) : null,
