@@ -7,6 +7,7 @@ const items = [
   { label: "Nova", to: "/nova-inspecao" },
   { label: "Historico", to: "/historico" },
   { label: "Frotas", to: "/registro-frotas" },
+  { label: "Patio BETA", to: "/patio" },
   { label: "Painel", to: "/painel-gerencial" }
 ];
 

@@ -8,34 +8,81 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  name      String
-  fullName  String?
-  jobTitle  String?
-  email     String     @unique
-  password  String
-  role      String     @default("INSPETOR")
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  inspecoes Inspecao[]
+  id                  String                @id @default(cuid())
+  name                String
+  fullName            String?
+  jobTitle            String?
+  email               String                @unique
+  password            String
+  role                String                @default("INSPETOR")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  inspecoes           Inspecao[]
+  yardLocations       YardLocation[]
+  yardLocationHistory YardLocationHistory[]
 
   @@index([role])
 }
 
 model Frota {
-  id               String     @id @default(cuid())
-  numeroFrota      String     @unique
-  placa            String
-  tipoEquipamento  String
-  material         String
-  capacidade       String
-  observacoesFixas String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  inspecoes        Inspecao[]
+  id                  String                @id @default(cuid())
+  numeroFrota         String                @unique
+  placa               String
+  tipoEquipamento     String
+  material            String
+  capacidade          String
+  observacoesFixas    String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  inspecoes           Inspecao[]
+  yardLocations       YardLocation[]
+  yardLocationHistory YardLocationHistory[]
 
   @@index([numeroFrota])
   @@index([placa])
+}
+
+model YardLocation {
+  id          String               @id @default(cuid())
+  fleetId     String
+  branch      YardBranch
+  xPercent    Float
+  yPercent    Float
+  note        String?
+  sector      YardSector?
+  accuracy    YardLocationAccuracy
+  source      YardLocationSource   @default(MANUAL)
+  updatedById String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  fleet       Frota                @relation(fields: [fleetId], references: [id], onDelete: Restrict)
+  updatedBy   User                 @relation(fields: [updatedById], references: [id])
+
+  @@unique([fleetId, branch])
+  @@index([branch, updatedAt])
+  @@index([branch, sector, updatedAt])
+  @@index([updatedById])
+}
+
+model YardLocationHistory {
+  id          String               @id @default(cuid())
+  fleetId     String
+  branch      YardBranch
+  xPercent    Float
+  yPercent    Float
+  note        String?
+  sector      YardSector?
+  accuracy    YardLocationAccuracy
+  source      YardLocationSource   @default(MANUAL)
+  updatedById String
+  createdAt   DateTime             @default(now())
+  fleet       Frota                @relation(fields: [fleetId], references: [id], onDelete: Restrict)
+  updatedBy   User                 @relation(fields: [updatedById], references: [id])
+
+  @@index([fleetId, branch, createdAt])
+  @@index([branch, createdAt])
+  @@index([branch, sector, createdAt])
+  @@index([updatedById])
 }
 
 model Collaborator {
@@ -51,24 +98,24 @@ model Collaborator {
 }
 
 model Inspecao {
-  id                String         @id @default(cuid())
-  frotaId           String
-  userId            String?
-  colaboradorId     String?
-  dataInspecao      DateTime
-  tipoInspecao      TipoInspecao
-  status            StatusInspecao
-  resultadoPosLavagem ResultadoPosLavagem?
+  id                    String                 @id @default(cuid())
+  frotaId               String
+  userId                String?
+  colaboradorId         String?
+  dataInspecao          DateTime
+  tipoInspecao          TipoInspecao
+  status                StatusInspecao
+  resultadoPosLavagem   ResultadoPosLavagem?
   motivoNaoConformidade MotivoNaoConformidade?
-  observacoesGerais String?
-  nomeInspetor      String
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  fotos             FotoInspecao[]
-  colaborador       Collaborator?  @relation(fields: [colaboradorId], references: [id])
-  frota             Frota          @relation(fields: [frotaId], references: [id], onDelete: Cascade)
-  user              User?          @relation(fields: [userId], references: [id])
-  pontosCriticos    PontoCritico[]
+  observacoesGerais     String?
+  nomeInspetor          String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  fotos                 FotoInspecao[]
+  colaborador           Collaborator?          @relation(fields: [colaboradorId], references: [id])
+  frota                 Frota                  @relation(fields: [frotaId], references: [id], onDelete: Cascade)
+  user                  User?                  @relation(fields: [userId], references: [id])
+  pontosCriticos        PontoCritico[]
 
   @@index([frotaId, dataInspecao])
   @@index([colaboradorId, dataInspecao])
@@ -140,4 +187,29 @@ enum MotivoNaoConformidade {
   PRODUTO_RESIDUAL
   VALVULA_CONTAMINADA
   OUTRO
+}
+
+enum YardBranch {
+  PAULINIA
+}
+
+enum YardLocationAccuracy {
+  EXACT
+  APPROXIMATE
+}
+
+enum YardLocationSource {
+  MANUAL
+  OCR
+}
+
+enum YardSector {
+  A
+  B
+  C
+  D
+  E
+  F
+  G
+  H
 }

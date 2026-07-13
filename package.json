@@ -14,7 +14,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "lint": "eslint .",
-    "test": "echo \"No tests configured\""
+    "test": "tsx --test src/server/modules/inspecoes/performance.utils.test.ts src/server/middleware/permissions.test.ts src/shared/yardGeometry.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

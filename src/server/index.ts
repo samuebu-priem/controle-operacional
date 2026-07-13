@@ -8,6 +8,7 @@ import { colaboradorRoutes } from "./modules/colaboradores/colaborador.routes";
 import { frotaRoutes } from "./modules/frotas/frota.routes";
 import { inspecaoRoutes } from "./modules/inspecoes/inspecao.routes";
 import { fotoRoutes } from "./modules/fotos/foto.routes";
+import { yardRoutes } from "./modules/yard/yard.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,6 +29,7 @@ app.use("/api/colaboradores", colaboradorRoutes);
 app.use("/api/frotas", frotaRoutes);
 app.use("/api/inspecoes", inspecaoRoutes);
 app.use("/api", fotoRoutes);
+app.use("/api/yard", yardRoutes);
 
 app.use(errorHandler);
 

@@ -453,7 +453,7 @@ inspecaoRoutes.get("/desempenho", requireAuth, requireGestor, async (req, res, n
         current.monthInspecoes += 1;
       }
       current.nonConformities += inspecao.pontosCriticos.length;
-      current.criteria.push(...inspecao.pontosCriticos.map((ponto) => ponto.categoria));
+      current.criteria.push(...inspecao.pontosCriticos.map((ponto: { categoria: string }) => ponto.categoria));
       rows.set(inspectorName, current);
     }
 

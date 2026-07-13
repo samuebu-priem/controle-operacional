@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../../lib/prisma";
 import { AppError } from "../../middleware/errorHandler";
-import type { PrismaClient } from "@prisma/client";
+import { requireAuth } from "../../middleware/auth";
 
 export const frotaRoutes = Router();
+
+frotaRoutes.use(requireAuth);
 
 function normalizeQuery(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -225,6 +227,14 @@ frotaRoutes.delete("/:id", async (req, res, next) => {
         inspecoes: {
           select: { id: true },
           take: 1
+        },
+        yardLocations: {
+          select: { id: true },
+          take: 1
+        },
+        yardLocationHistory: {
+          select: { id: true },
+          take: 1
         }
       }
     });
@@ -235,6 +245,10 @@ frotaRoutes.delete("/:id", async (req, res, next) => {
 
     if (frota.inspecoes.length > 0) {
       throw new AppError("Esta frota possui histórico de inspeções e não pode ser excluída.", 400, "BAD_REQUEST");
+    }
+
+    if (frota.yardLocations.length > 0 || frota.yardLocationHistory.length > 0) {
+      throw new AppError("Esta frota possui histórico de localização no pátio e não pode ser excluída.", 400, "BAD_REQUEST");
     }
 
     await prisma.frota.delete({

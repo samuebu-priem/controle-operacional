@@ -155,3 +155,41 @@ export async function updateCollaborator(id, payload) {
         body: JSON.stringify(payload)
     });
 }
+
+export async function listYardLocations(filters = {}) {
+    const params = new URLSearchParams({ branch: filters.branch ?? "PAULINIA" });
+    if (filters.search?.trim()) params.set("search", filters.search.trim());
+    if (filters.stale) params.set("stale", String(filters.stale));
+    if (filters.page) params.set("page", String(filters.page));
+    if (filters.limit) params.set("limit", String(filters.limit));
+    return request(`/api/yard/locations?${params.toString()}`);
+}
+
+export async function listYardFleets(search = "") {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("search", search.trim());
+    return request(`/api/yard/fleets?${params.toString()}`);
+}
+
+export async function getYardFleetLocation(fleetId, branch = "PAULINIA") {
+    return request(`/api/yard/locations/${encodeURIComponent(fleetId)}?branch=${encodeURIComponent(branch)}`);
+}
+
+export async function updateYardFleetLocation(fleetId, payload) {
+    return request(`/api/yard/locations/${encodeURIComponent(fleetId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+    });
+}
+
+export async function getYardHistory(fleetId, filters = {}) {
+    const params = new URLSearchParams({ branch: filters.branch ?? "PAULINIA" });
+    if (filters.page) params.set("page", String(filters.page));
+    if (filters.limit) params.set("limit", String(filters.limit));
+    return request(`/api/yard/locations/${encodeURIComponent(fleetId)}/history?${params.toString()}`);
+}
+
+export async function listStaleYardLocations(hours = 2, branch = "PAULINIA") {
+    const params = new URLSearchParams({ branch, hours: String(hours), limit: "100" });
+    return request(`/api/yard/stale?${params.toString()}`);
+}
