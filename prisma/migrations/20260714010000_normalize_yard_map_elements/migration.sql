@@ -1,3 +1,7 @@
+-- A migration pode ser repetida com segurança após `prisma migrate resolve --rolled-back`.
+-- A tabela é nova e contém apenas cópias normalizadas do JSON de YardMap.
+DROP TABLE IF EXISTS "YardMapElement" CASCADE;
+
 CREATE TABLE "YardMapElement" (
     "id" TEXT NOT NULL,
     "mapId" TEXT NOT NULL,
@@ -66,24 +70,38 @@ SELECT
       WHEN COALESCE(e.value->>'type', '') IN ('BUILDING','BOX','GATE','SHED') THEN 6000
       ELSE 7000
     END) + e.ordinality)::INTEGER,
-    COALESCE((e.value->>'locked')::BOOLEAN, false),
-    COALESCE((e.value->>'visible')::BOOLEAN, (e.value->'properties'->>'visible')::BOOLEAN, true),
+    CASE WHEN LOWER(COALESCE(e.value->>'locked', 'false')) IN ('true','false') THEN COALESCE(e.value->>'locked', 'false')::BOOLEAN ELSE false END,
+    CASE
+      WHEN LOWER(COALESCE(e.value->>'visible', '')) IN ('true','false') THEN (e.value->>'visible')::BOOLEAN
+      WHEN LOWER(COALESCE(e.value->'properties'->>'visible', '')) IN ('true','false') THEN (e.value->'properties'->>'visible')::BOOLEAN
+      ELSE true
+    END,
     m."createdAt",
     m."updatedAt"
 FROM "YardMap" m
-CROSS JOIN LATERAL jsonb_array_elements(COALESCE(m."document"->'elements', '[]'::JSONB)) WITH ORDINALITY AS e(value, ordinality);
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE WHEN jsonb_typeof(m."document"->'elements') = 'array' THEN m."document"->'elements' ELSE '[]'::JSONB END
+) WITH ORDINALITY AS e(value, ordinality);
 
 -- Atualiza ids de pai caso um documento legado já possuísse parentId.
 UPDATE "YardMapElement" child
-SET "parentId" = child."mapId" || ':' || source.value->>'parentId'
+SET "parentId" = child."mapId" || ':' || (source.value->>'parentId')
 FROM "YardMap" m
-CROSS JOIN LATERAL jsonb_array_elements(COALESCE(m."document"->'elements', '[]'::JSONB)) AS source(value)
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE WHEN jsonb_typeof(m."document"->'elements') = 'array' THEN m."document"->'elements' ELSE '[]'::JSONB END
+) AS source(value)
 WHERE child."mapId" = m."id"
-  AND child."id" = m."id" || ':' || source.value->>'id'
-  AND NULLIF(source.value->>'parentId', '') IS NOT NULL;
+  AND child."id" = m."id" || ':' || (source.value->>'id')
+  AND NULLIF(source.value->>'parentId', '') IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM "YardMapElement" parent
+    WHERE parent."id" = child."mapId" || ':' || (source.value->>'parentId')
+      AND parent."mapId" = child."mapId"
+  );
 
 UPDATE "YardMap"
 SET "document" = jsonb_set(
   jsonb_set("document" - 'elements', '{schemaVersion}', '2'::JSONB, true),
   '{elements}', '[]'::JSONB, true
-);
+)
+WHERE jsonb_typeof("document") = 'object';
