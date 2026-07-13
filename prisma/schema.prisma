@@ -99,10 +99,38 @@ model YardMap {
   updatedAt   DateTime @updatedAt
   createdBy   User     @relation("YardMapCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   updatedBy   User     @relation("YardMapUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  elements    YardMapElement[]
 
   @@index([updatedAt])
   @@index([createdById])
   @@index([updatedById])
+}
+
+model YardMapElement {
+  id          String           @id
+  mapId       String
+  parentId    String?
+  groupId     String?
+  category    String
+  elementType String
+  name        String
+  layerId     String
+  geometry    Json
+  style       Json
+  properties  Json
+  zIndex      Int
+  locked      Boolean          @default(false)
+  visible     Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  map         YardMap          @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  parent      YardMapElement?  @relation("YardElementHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    YardMapElement[] @relation("YardElementHierarchy")
+
+  @@index([mapId, zIndex])
+  @@index([parentId])
+  @@index([groupId])
+  @@index([category, elementType])
 }
 
 model Collaborator {

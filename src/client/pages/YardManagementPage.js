@@ -130,7 +130,7 @@ export default function YardManagementPage() {
 
     const sectorOptions = useMemo(() => {
         if (!mapDocument) return ["ALL"];
-        const values = mapDocument.elements.filter((element) => element.type === "SECTOR" && element.properties.active).map((element) => element.properties.code || element.properties.name).filter(Boolean);
+        const values = mapDocument.elements.filter((element) => element.type === "SECTOR" && element.properties.active).map((element) => element.properties.code || element.name).filter(Boolean);
         return ["ALL", ...Array.from(new Set(values))];
     }, [mapDocument]);
 
@@ -225,7 +225,7 @@ export default function YardManagementPage() {
             resetMap();
             return;
         }
-        const sector = mapDocument?.elements.find((item) => item.type === "SECTOR" && (item.properties.code === value || item.properties.name === value));
+        const sector = mapDocument?.elements.find((item) => item.type === "SECTOR" && (item.properties.code === value || item.name === value));
         if (sector) {
             const points = geometryPoints(sector);
             const x = points.reduce((sum, point) => sum + point[0], 0) / points.length;

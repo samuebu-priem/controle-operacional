@@ -9,7 +9,7 @@ import { requireAuth, type AuthenticatedRequest } from "../../middleware/auth";
 import { AppError } from "../../middleware/errorHandler";
 import { requirePermission } from "../../middleware/permissions";
 import { createEmptyYardMapDocument } from "../../../shared/yardMapConfig";
-import { validateYardMapDocument } from "../../../shared/yardGeometry";
+import { validateAllElementPlacements, validateYardMapDocument } from "../../../shared/yardGeometry";
 
 export const yardMapRoutes = Router();
 
@@ -38,6 +38,40 @@ function branchValue(value: unknown) {
   return branch;
 }
 
+function mapDocumentFromRecord(map: any) {
+  const stored = map.document && typeof map.document === "object" && !Array.isArray(map.document) ? map.document : createEmptyYardMapDocument();
+  const elements = (map.elements || []).map((element: any) => ({
+    id: element.id, parentId: element.parentId, groupId: element.groupId, category: element.category,
+    type: element.elementType, name: element.name, layerId: element.layerId, geometry: element.geometry,
+    style: element.style, properties: element.properties, zIndex: element.zIndex, locked: element.locked,
+    visible: element.visible, createdAt: element.createdAt.toISOString(), updatedAt: element.updatedAt.toISOString()
+  }));
+  return validateYardMapDocument({ ...stored, schemaVersion: 2, elements });
+}
+
+function responseMap(map: any) {
+  const { elements: _elements, ...data } = map;
+  return { ...data, document: mapDocumentFromRecord(map) };
+}
+
+function storedDocument(document: ReturnType<typeof validateYardMapDocument>) {
+  return { ...document, elements: [] };
+}
+
+function elementRows(mapId: string, document: ReturnType<typeof validateYardMapDocument>) {
+  return document.elements.map((element) => ({
+    id: element.id, mapId, parentId: element.parentId, groupId: element.groupId, category: element.category,
+    elementType: element.type, name: element.name, layerId: element.layerId, geometry: element.geometry,
+    style: element.style, properties: element.properties, zIndex: Math.round(element.zIndex), locked: element.locked,
+    visible: element.visible, createdAt: new Date(element.createdAt), updatedAt: new Date(element.updatedAt)
+  }));
+}
+
+function assertValidPlacements(document: ReturnType<typeof validateYardMapDocument>) {
+  const invalid = validateAllElementPlacements(document).filter(({ element }) => element.category !== "GENERIC");
+  if (invalid.length) throw new AppError("O mapa possui elementos fora de uma área válida.", 400, "INVALID_PLACEMENT", invalid.slice(0, 20).map(({ element, result }) => ({ id: element.id, name: element.name, message: result.message })));
+}
+
 yardMapRoutes.use(requireAuth);
 
 yardMapRoutes.get("/", requirePermission("yard:view"), async (_req, res, next) => {
@@ -57,10 +91,10 @@ yardMapRoutes.get("/:branch", requirePermission("yard:view"), async (req, res, n
     const branch = branchValue(req.params.branch);
     const map = await prisma.yardMap.findUnique({
       where: { branch },
-      include: { updatedBy: { select: { id: true, name: true, fullName: true } } }
+      include: { updatedBy: { select: { id: true, name: true, fullName: true } }, elements: { orderBy: { zIndex: "asc" } } }
     });
     if (!map) throw new AppError("Mapa da filial não encontrado.", 404, "NOT_FOUND");
-    return res.json({ map });
+    return res.json({ map: responseMap(map) });
   } catch (error) {
     return next(error);
   }
@@ -76,10 +110,13 @@ yardMapRoutes.post("/", requirePermission("yard:map-edit"), async (req, res, nex
     const existing = await prisma.yardMap.findUnique({ where: { branch }, select: { id: true } });
     if (existing) throw new AppError("Já existe um mapa para esta filial.", 409, "MAP_ALREADY_EXISTS");
     const document = req.body?.document ? validateYardMapDocument(req.body.document) : createEmptyYardMapDocument();
-    const map = await prisma.yardMap.create({
-      data: { branch, name, document, createdById: authReq.user.id, updatedById: authReq.user.id }
+    assertValidPlacements(document);
+    const map = await prisma.$transaction(async (tx: any) => {
+      const created = await tx.yardMap.create({ data: { branch, name, document: storedDocument(document), createdById: authReq.user!.id, updatedById: authReq.user!.id } });
+      if (document.elements.length) await tx.yardMapElement.createMany({ data: elementRows(created.id, document) });
+      return tx.yardMap.findUniqueOrThrow({ where: { id: created.id }, include: { elements: { orderBy: { zIndex: "asc" } } } });
     });
-    return res.status(201).json({ map });
+    return res.status(201).json({ map: responseMap(map) });
   } catch (error) {
     return next(error);
   }
@@ -92,14 +129,19 @@ yardMapRoutes.put("/:id", requirePermission("yard:map-edit"), async (req, res, n
     const revision = Number(req.body?.revision);
     if (!Number.isInteger(revision) || revision < 1) throw new AppError("Revisão do mapa inválida.", 400, "BAD_REQUEST");
     const document = validateYardMapDocument(req.body?.document);
+    assertValidPlacements(document);
     const name = cleanText(req.body?.name, 120);
-    const result = await prisma.yardMap.updateMany({
-      where: { id: req.params.id, revision },
-      data: { document, ...(name ? { name } : {}), updatedById: authReq.user.id, revision: { increment: 1 } }
+    const map = await prisma.$transaction(async (tx: any) => {
+      const result = await tx.yardMap.updateMany({
+        where: { id: req.params.id, revision },
+        data: { document: storedDocument(document), ...(name ? { name } : {}), updatedById: authReq.user!.id, revision: { increment: 1 } }
+      });
+      if (result.count === 0) throw new AppError("O mapa foi alterado por outro usuário. Recarregue antes de salvar.", 409, "REVISION_CONFLICT");
+      await tx.yardMapElement.deleteMany({ where: { mapId: req.params.id } });
+      if (document.elements.length) await tx.yardMapElement.createMany({ data: elementRows(String(req.params.id), document) });
+      return tx.yardMap.findUniqueOrThrow({ where: { id: req.params.id }, include: { elements: { orderBy: { zIndex: "asc" } } } });
     });
-    if (result.count === 0) throw new AppError("O mapa foi alterado por outro usuário. Recarregue antes de salvar.", 409, "REVISION_CONFLICT");
-    const map = await prisma.yardMap.findUnique({ where: { id: req.params.id } });
-    return res.json({ map });
+    return res.json({ map: responseMap(map) });
   } catch (error) {
     return next(error);
   }
@@ -107,7 +149,7 @@ yardMapRoutes.put("/:id", requirePermission("yard:map-edit"), async (req, res, n
 
 yardMapRoutes.delete("/:id", requirePermission("yard:map-edit"), async (req, res, next) => {
   try {
-    const map = await prisma.yardMap.findUnique({ where: { id: req.params.id } });
+    const map = await prisma.yardMap.findUnique({ where: { id: req.params.id }, include: { elements: { orderBy: { zIndex: "asc" } } } });
     if (!map) throw new AppError("Mapa não encontrado.", 404, "NOT_FOUND");
 
     await prisma.yardMap.delete({ where: { id: map.id } });
@@ -140,7 +182,7 @@ yardMapRoutes.post("/:id/reference-image", requirePermission("yard:map-edit"), h
     if (!req.file) throw new AppError("Selecione uma imagem válida.", 400, "BAD_REQUEST");
     const map = await prisma.yardMap.findUnique({ where: { id: req.params.id } });
     if (!map) throw new AppError("Mapa não encontrado.", 404, "NOT_FOUND");
-    const document = validateYardMapDocument(map.document);
+    const document = mapDocumentFromRecord(map);
     const directory = path.resolve(process.cwd(), "uploads", "yard-maps");
     await mkdir(directory, { recursive: true });
     const fileName = `${map.branch.toLowerCase()}-${randomUUID()}.jpg`;
@@ -151,9 +193,10 @@ yardMapRoutes.post("/:id/reference-image", requirePermission("yard:map-edit"), h
     };
     const updated = await prisma.yardMap.update({
       where: { id: map.id },
-      data: { document: nextDocument, updatedById: authReq.user.id, revision: { increment: 1 } }
+      data: { document: storedDocument(nextDocument), updatedById: authReq.user.id, revision: { increment: 1 } },
+      include: { elements: { orderBy: { zIndex: "asc" } } }
     });
-    return res.json({ map: updated });
+    return res.json({ map: responseMap(updated) });
   } catch (error) {
     return next(error);
   }

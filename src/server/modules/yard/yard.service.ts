@@ -2,6 +2,19 @@ import { prisma } from "../../lib/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { getSectorForPoint, isPointInsideYard, validateYardMapDocument } from "../../../shared/yardGeometry";
 
+function hydrateMap(map: any) {
+  return validateYardMapDocument({
+    ...map.document,
+    schemaVersion: 2,
+    elements: (map.elements || []).map((element: any) => ({
+      id: element.id, parentId: element.parentId, groupId: element.groupId, category: element.category,
+      type: element.elementType, name: element.name, layerId: element.layerId, geometry: element.geometry,
+      style: element.style, properties: element.properties, zIndex: element.zIndex, locked: element.locked,
+      visible: element.visible, createdAt: element.createdAt.toISOString(), updatedAt: element.updatedAt.toISOString()
+    }))
+  });
+}
+
 type YardLocationAccuracy = "EXACT" | "APPROXIMATE";
 type YardLocationSource = "MANUAL" | "OCR";
 
@@ -62,7 +75,7 @@ export async function updateYardLocation(input: UpdateYardLocationInput) {
     const [fleet, user, yardMap] = await Promise.all([
       tx.frota.findUnique({ where: { id: validated.fleetId }, select: { id: true } }),
       tx.user.findUnique({ where: { id: validated.updatedById }, select: { id: true } }),
-      tx.yardMap.findUnique({ where: { branch: validated.branch }, select: { document: true } })
+      tx.yardMap.findUnique({ where: { branch: validated.branch }, include: { elements: { orderBy: { zIndex: "asc" } } } })
     ]);
 
     if (!fleet) {
@@ -74,7 +87,7 @@ export async function updateYardLocation(input: UpdateYardLocationInput) {
     if (!yardMap) {
       throw new AppError("A filial ainda não possui um mapa configurado.", 400, "YARD_MAP_NOT_FOUND");
     }
-    const document = validateYardMapDocument(yardMap.document);
+    const document = hydrateMap(yardMap);
     const point = { xPercent: validated.xPercent, yPercent: validated.yPercent };
     if (!isPointInsideYard(point, document)) {
       throw new AppError("O ponto deve estar dentro dos limites permitidos do mapa.", 400, "OUTSIDE_YARD");
