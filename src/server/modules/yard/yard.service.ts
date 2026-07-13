@@ -1,21 +1,19 @@
 import { prisma } from "../../lib/prisma";
 import { AppError } from "../../middleware/errorHandler";
-import { getSectorForPoint } from "../../../shared/yardGeometry";
-import type { YardSectorId } from "../../../shared/yardMapConfig";
+import { getSectorForPoint, isPointInsideYard, validateYardMapDocument } from "../../../shared/yardGeometry";
 
-type YardBranch = "PAULINIA";
 type YardLocationAccuracy = "EXACT" | "APPROXIMATE";
 type YardLocationSource = "MANUAL" | "OCR";
 
 export type UpdateYardLocationInput = {
   fleetId: string;
-  branch: YardBranch;
+  branch: string;
   xPercent: number;
   yPercent: number;
   note: string | null;
   accuracy: YardLocationAccuracy;
   source: YardLocationSource;
-  sector?: YardSectorId | null;
+  sector?: string | null;
   updatedById: string;
 };
 
@@ -25,7 +23,7 @@ function validateServiceInput(input: UpdateYardLocationInput) {
   if (!input.fleetId || !input.updatedById) {
     throw new AppError("Frota e usuário responsável são obrigatórios.", 400, "BAD_REQUEST");
   }
-  if (input.branch !== "PAULINIA") {
+  if (!/^[A-Z0-9_-]{2,40}$/.test(input.branch)) {
     throw new AppError("Filial inválida.", 400, "BAD_REQUEST");
   }
   if (!Number.isFinite(input.xPercent) || input.xPercent < 0 || input.xPercent > 1) {
@@ -41,20 +39,12 @@ function validateServiceInput(input: UpdateYardLocationInput) {
     throw new AppError("Origem da localização inválida.", 400, "BAD_REQUEST");
   }
 
-  const sector = getSectorForPoint({ xPercent: input.xPercent, yPercent: input.yPercent }, input.branch);
-  if (!sector) {
-    throw new AppError("O ponto deve estar dentro de um setor válido do pátio e fora das vias e construções.", 400, "OUTSIDE_YARD");
-  }
-  if (input.sector && input.sector !== sector) {
-    throw new AppError("O setor informado não corresponde às coordenadas selecionadas.", 400, "INVALID_SECTOR");
-  }
-
   const note = input.note?.replace(/[\u0000-\u001F\u007F]/g, " ").trim() || null;
   if (note && note.length > MAX_NOTE_LENGTH) {
     throw new AppError(`A observação deve ter no máximo ${MAX_NOTE_LENGTH} caracteres.`, 400, "BAD_REQUEST");
   }
 
-  return { ...input, note, sector };
+  return { ...input, note };
 }
 
 const yardLocationInclude = {
@@ -69,9 +59,10 @@ export async function updateYardLocation(input: UpdateYardLocationInput) {
   const validated = validateServiceInput(input);
 
   return prisma.$transaction(async (tx: typeof prisma) => {
-    const [fleet, user] = await Promise.all([
+    const [fleet, user, yardMap] = await Promise.all([
       tx.frota.findUnique({ where: { id: validated.fleetId }, select: { id: true } }),
-      tx.user.findUnique({ where: { id: validated.updatedById }, select: { id: true } })
+      tx.user.findUnique({ where: { id: validated.updatedById }, select: { id: true } }),
+      tx.yardMap.findUnique({ where: { branch: validated.branch }, select: { document: true } })
     ]);
 
     if (!fleet) {
@@ -80,12 +71,24 @@ export async function updateYardLocation(input: UpdateYardLocationInput) {
     if (!user) {
       throw new AppError("Usuário autenticado não encontrado.", 401, "UNAUTHORIZED");
     }
+    if (!yardMap) {
+      throw new AppError("A filial ainda não possui um mapa configurado.", 400, "YARD_MAP_NOT_FOUND");
+    }
+    const document = validateYardMapDocument(yardMap.document);
+    const point = { xPercent: validated.xPercent, yPercent: validated.yPercent };
+    if (!isPointInsideYard(point, document)) {
+      throw new AppError("O ponto deve estar dentro dos limites permitidos do mapa.", 400, "OUTSIDE_YARD");
+    }
+    const sector = getSectorForPoint(point, document);
+    if (validated.sector && validated.sector !== sector) {
+      throw new AppError("O setor informado não corresponde às coordenadas selecionadas.", 400, "INVALID_SECTOR");
+    }
 
     const data = {
       xPercent: validated.xPercent,
       yPercent: validated.yPercent,
       note: validated.note,
-      sector: validated.sector,
+      sector,
       accuracy: validated.accuracy,
       source: validated.source,
       updatedById: validated.updatedById

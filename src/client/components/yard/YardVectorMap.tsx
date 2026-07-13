@@ -1,137 +1,73 @@
-import { yardMapConfig, type MapPoint, type ParkingRow, type YardSectorId } from "../../../shared/yardMapConfig";
+import { geometryPoints, validateYardMapDocument } from "../../../shared/yardGeometry";
+import type { MapPoint, YardMapDocument, YardMapElement } from "../../../shared/yardMapConfig";
 
-type YardVectorMapProps = {
+type Props = {
+  document: YardMapDocument;
   svgRef?: any;
-  activeSector?: YardSectorId | null;
-  onSectorSelect?: (sector: YardSectorId) => void;
+  selectedId?: string | null;
+  activeSector?: string | null;
+  draftPoints?: MapPoint[];
+  editor?: boolean;
+  onElementSelect?: (element: YardMapElement, event: any) => void;
 };
 
-function points(pointsValue: readonly MapPoint[]) {
-  return pointsValue.map(([x, y]) => `${x},${y}`).join(" ");
+function points(value: readonly MapPoint[]) { return value.map(([x, y]) => `${x},${y}`).join(" "); }
+
+function center(element: YardMapElement): MapPoint {
+  const value = geometryPoints(element);
+  return [value.reduce((sum, point) => sum + point[0], 0) / value.length, value.reduce((sum, point) => sum + point[1], 0) / value.length];
 }
 
-function parkingTicks(row: ParkingRow) {
-  const dx = row.end[0] - row.start[0];
-  const dy = row.end[1] - row.start[1];
-  const length = Math.max(1, Math.hypot(dx, dy));
-  const normalX = (-dy / length) * 14;
-  const normalY = (dx / length) * 14;
-  return Array.from({ length: row.slots + 1 }, (_, index) => {
-    const ratio = index / row.slots;
-    const x = row.start[0] + dx * ratio;
-    const y = row.start[1] + dy * ratio;
-    return { x1: x - normalX, y1: y - normalY, x2: x + normalX, y2: y + normalY };
-  });
+function measurement(element: YardMapElement) {
+  if (element.type !== "MEASURE" || element.geometry.kind !== "polyline") return null;
+  const pointsValue = element.geometry.points;
+  const length = pointsValue.slice(1).reduce((total, point, index) => total + Math.hypot(point[0] - pointsValue[index][0], point[1] - pointsValue[index][1]), 0);
+  return `${Math.round(length)} u`;
 }
 
-export default function YardVectorMap({ svgRef, activeSector = null, onSectorSelect }: YardVectorMapProps) {
-  const config = yardMapConfig;
+function ElementShape({ element, selected, onSelect }: { element: YardMapElement; selected: boolean; onSelect?: (event: any) => void }) {
+  const geometry = element.geometry;
+  const style = { fill: element.style.fill, stroke: element.style.stroke, strokeWidth: element.style.strokeWidth, opacity: element.style.opacity };
+  const common = { className: `yard-map-object${selected ? " yard-map-object--selected" : ""}`, style, onPointerDown: (event: any) => { event.stopPropagation(); onSelect?.(event); } };
+  if (element.type === "TEXT" && geometry.kind === "point") return <text {...common} x={geometry.x} y={geometry.y}>{element.properties.name}</text>;
+  if (geometry.kind === "point") return <g {...common} transform={`translate(${geometry.x} ${geometry.y})`}><circle r="13" /><path d="M0 13 L-7 29 L7 29 Z" /></g>;
+  if (geometry.kind === "rect") return <rect {...common} x={geometry.x} y={geometry.y} width={geometry.width} height={geometry.height} rx={element.type === "PARKING" || element.type === "BOX" ? 2 : 8} />;
+  if (geometry.kind === "polyline") return <polyline {...common} points={points(geometry.points)} fill="none" strokeWidth={geometry.width || element.style.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />;
+  return <polygon {...common} points={points(geometry.points)} />;
+}
+
+export default function YardVectorMap({ document: rawDocument, svgRef, selectedId, activeSector, draftPoints = [], editor = false, onElementSelect }: Props) {
+  const document = validateYardMapDocument(rawDocument);
+  const layers = new Map(document.layers.map((layer) => [layer.id, layer]));
+  const elements = [...document.elements]
+    .filter((element) => element.properties.visible && (layers.get(element.layerId)?.visible ?? true))
+    .sort((a, b) => (layers.get(a.layerId)?.order ?? 0) - (layers.get(b.layerId)?.order ?? 0));
+  const backgroundLayer = layers.get("background");
+  const background = document.settings.background;
 
   return (
-    <svg
-      ref={svgRef}
-      className="yard-vector-map"
-      viewBox={`0 0 ${config.viewBox.width} ${config.viewBox.height}`}
-      role="img"
-      aria-label="Mapa vetorial do pátio Cavalinho em Paulínia"
-      preserveAspectRatio="xMidYMid meet"
-    >
+    <svg ref={svgRef} className="yard-vector-map" viewBox={`0 0 ${document.viewBox.width} ${document.viewBox.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa editável do pátio">
       <defs>
-        <filter id="yard-boundary-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="5" result="blur" />
-          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
+        <pattern id="yard-editor-grid" width={document.settings.gridSize} height={document.settings.gridSize} patternUnits="userSpaceOnUse">
+          <path d={`M ${document.settings.gridSize} 0 L 0 0 0 ${document.settings.gridSize}`} fill="none" stroke="rgba(125,211,252,.16)" strokeWidth="1" />
+        </pattern>
       </defs>
-
-      <rect width={config.viewBox.width} height={config.viewBox.height} fill={config.colors.background} />
-
-      <g className="yard-vector-map__areas">
-        {config.areas.map((area) => (
-          <polygon key={area.id} points={points(area.points)} fill={config.colors.yardFill} />
-        ))}
-      </g>
-
-      <g className="yard-vector-map__sectors">
-        {config.yardSectors.map((sector) => {
-          const selected = activeSector === sector.sector;
-          return (
-            <polygon
-              key={sector.id}
-              className={`yard-vector-sector${selected ? " yard-vector-sector--active" : ""}`}
-              points={points(sector.points)}
-              fill={selected ? config.colors.sectorHighlight : config.colors.sectorFill}
-              data-sector={sector.sector}
-              onClick={() => onSectorSelect?.(sector.sector)}
-            />
-          );
-        })}
-      </g>
-
-      <g className="yard-vector-map__parking" pointerEvents="none">
-        {config.parkingRows.map((row) => (
-          <g key={row.id}>
-            <line x1={row.start[0]} y1={row.start[1]} x2={row.end[0]} y2={row.end[1]} />
-            {parkingTicks(row).map((tick, index) => <line key={`${row.id}_${index}`} {...tick} />)}
+      <rect width={document.viewBox.width} height={document.viewBox.height} fill="#07111d" />
+      {background.url && background.visible && backgroundLayer?.visible !== false ? <image href={background.url} width={document.viewBox.width} height={document.viewBox.height} opacity={background.opacity} preserveAspectRatio="xMidYMid meet" /> : null}
+      {editor && document.settings.gridVisible ? <rect width={document.viewBox.width} height={document.viewBox.height} fill="url(#yard-editor-grid)" pointerEvents="none" /> : null}
+      {editor && document.settings.guidesVisible ? <g className="yard-map-guides" pointerEvents="none"><line x1={document.viewBox.width / 2} y1="0" x2={document.viewBox.width / 2} y2={document.viewBox.height} /><line x1="0" y1={document.viewBox.height / 2} x2={document.viewBox.width} y2={document.viewBox.height / 2} /></g> : null}
+      {elements.map((element) => {
+        const sectorActive = element.type === "SECTOR" && activeSector && (element.properties.code === activeSector || element.properties.name === activeSector);
+        return (
+          <g key={element.id} data-element-id={element.id} className={sectorActive ? "yard-map-sector-active" : ""}>
+            <ElementShape element={element} selected={element.id === selectedId} onSelect={(event) => onElementSelect?.(element, event)} />
+            {element.type === "SECTOR" ? <text className="yard-map-sector-label" x={center(element)[0]} y={center(element)[1]} textAnchor="middle" pointerEvents="none">{element.properties.code || element.properties.name}</text> : null}
+            {measurement(element) ? <text className="yard-map-measure-label" x={center(element)[0]} y={center(element)[1]} textAnchor="middle" pointerEvents="none">{measurement(element)}</text> : null}
+            {!editor && element.type !== "BOUNDARY" && element.type !== "SECTOR" && element.properties.name && element.geometry.kind !== "point" ? <text className="yard-map-element-label" x={center(element)[0]} y={center(element)[1]} textAnchor="middle" pointerEvents="none">{element.properties.name}</text> : null}
           </g>
-        ))}
-      </g>
-
-      <g className="yard-vector-map__roads">
-        {config.roads.map((road) => (
-          <polyline
-            key={road.id}
-            points={points(road.points)}
-            fill="none"
-            stroke={road.kind === "PUBLIC" ? config.colors.roadPublic : config.colors.roadInternal}
-            strokeWidth={road.width}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
-      </g>
-
-      <g className="yard-vector-map__buildings">
-        {config.buildings.map((building) => (
-          <polygon key={building.id} points={points(building.points)} fill={config.colors.building} stroke={config.colors.buildingRoof} strokeWidth="6" />
-        ))}
-      </g>
-
-      <g className="yard-vector-map__sector-labels">
-        {config.yardSectors.map((sector) => (
-          <g key={`${sector.id}_label`} transform={`translate(${sector.labelPoint[0]} ${sector.labelPoint[1]})`} pointerEvents="none">
-            <text className="yard-vector-sector__letter" textAnchor="middle" y="-5">{sector.sector}</text>
-            <text className="yard-vector-sector__name" textAnchor="middle" y="28">{sector.name}</text>
-          </g>
-        ))}
-      </g>
-
-      <g className="yard-vector-map__labels" pointerEvents="none">
-        {config.labels.map((label) => (
-          <text
-            key={label.id}
-            className={`yard-vector-label yard-vector-label--${label.kind.toLowerCase()}`}
-            x={label.point[0]}
-            y={label.point[1]}
-            textAnchor="middle"
-          >
-            {label.text}
-          </text>
-        ))}
-      </g>
-
-      <g className="yard-vector-map__boundaries" pointerEvents="none">
-        {config.areas.map((area) => (
-          <polygon
-            key={`${area.id}_boundary`}
-            points={points(area.points)}
-            fill="none"
-            stroke={config.colors.boundary}
-            strokeWidth="4"
-            vectorEffect="non-scaling-stroke"
-            filter="url(#yard-boundary-glow)"
-          />
-        ))}
-      </g>
+        );
+      })}
+      {draftPoints.length ? <polyline className="yard-map-draft" points={points(draftPoints)} fill="rgba(56,189,248,.12)" stroke="#38bdf8" strokeWidth="4" strokeDasharray="10 8" /> : null}
     </svg>
   );
 }

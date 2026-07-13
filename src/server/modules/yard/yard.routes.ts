@@ -4,16 +4,11 @@ import { requireAuth, type AuthenticatedRequest } from "../../middleware/auth";
 import { AppError } from "../../middleware/errorHandler";
 import { requirePermission } from "../../middleware/permissions";
 import { updateYardLocation, yardLocationInclude } from "./yard.service";
-import { getSectorForPoint } from "../../../shared/yardGeometry";
-import type { YardSectorId } from "../../../shared/yardMapConfig";
 
 export const yardRoutes = Router();
 
-const BRANCHES = ["PAULINIA"] as const;
 const ACCURACIES = ["EXACT", "APPROXIMATE"] as const;
 const MAX_NOTE_LENGTH = 500;
-const SECTORS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
-type YardBranch = "PAULINIA";
 type YardLocationAccuracy = "EXACT" | "APPROXIMATE";
 
 function text(value: unknown) {
@@ -26,12 +21,12 @@ function pageValue(value: unknown, fallback: number, maximum = Number.MAX_SAFE_I
   return Math.min(parsed, maximum);
 }
 
-function branchValue(value: unknown): YardBranch {
+function branchValue(value: unknown) {
   const branch = (text(value) || "PAULINIA").toUpperCase();
-  if (!BRANCHES.includes(branch as (typeof BRANCHES)[number])) {
+  if (!/^[A-Z0-9_-]{2,40}$/.test(branch)) {
     throw new AppError("Filial inválida.", 400, "BAD_REQUEST");
   }
-  return branch as YardBranch;
+  return branch;
 }
 
 function parseUpdateBody(body: unknown) {
@@ -55,9 +50,6 @@ function parseUpdateBody(body: unknown) {
   if (!ACCURACIES.includes(accuracy as (typeof ACCURACIES)[number])) {
     throw new AppError("Precisão inválida. Use EXACT ou APPROXIMATE.", 400, "BAD_REQUEST");
   }
-  if (requestedSector && !SECTORS.includes(requestedSector as YardSectorId)) {
-    throw new AppError("Setor inválido. Use um valor entre A e H.", 400, "BAD_REQUEST");
-  }
   if (payload.note !== undefined && payload.note !== null && typeof payload.note !== "string") {
     throw new AppError("A observação deve ser um texto.", 400, "BAD_REQUEST");
   }
@@ -67,15 +59,7 @@ function parseUpdateBody(body: unknown) {
     throw new AppError(`A observação deve ter no máximo ${MAX_NOTE_LENGTH} caracteres.`, 400, "BAD_REQUEST");
   }
 
-  const sector = getSectorForPoint({ xPercent, yPercent }, branch);
-  if (!sector) {
-    throw new AppError("Selecione um ponto dentro de um setor do pátio e fora das vias e construções.", 400, "OUTSIDE_YARD");
-  }
-  if (requestedSector && requestedSector !== sector) {
-    throw new AppError("O setor informado não corresponde ao ponto selecionado.", 400, "INVALID_SECTOR");
-  }
-
-  return { branch, xPercent, yPercent, sector, accuracy: accuracy as YardLocationAccuracy, note: note || null };
+  return { branch, xPercent, yPercent, sector: requestedSector || null, accuracy: accuracy as YardLocationAccuracy, note: note || null };
 }
 
 yardRoutes.use(requireAuth);

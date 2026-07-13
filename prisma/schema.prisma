@@ -20,6 +20,8 @@ model User {
   inspecoes           Inspecao[]
   yardLocations       YardLocation[]
   yardLocationHistory YardLocationHistory[]
+  yardMapsCreated     YardMap[]             @relation("YardMapCreatedBy")
+  yardMapsUpdated     YardMap[]             @relation("YardMapUpdatedBy")
 
   @@index([role])
 }
@@ -45,11 +47,11 @@ model Frota {
 model YardLocation {
   id          String               @id @default(cuid())
   fleetId     String
-  branch      YardBranch
+  branch      String
   xPercent    Float
   yPercent    Float
   note        String?
-  sector      YardSector?
+  sector      String?
   accuracy    YardLocationAccuracy
   source      YardLocationSource   @default(MANUAL)
   updatedById String
@@ -67,11 +69,11 @@ model YardLocation {
 model YardLocationHistory {
   id          String               @id @default(cuid())
   fleetId     String
-  branch      YardBranch
+  branch      String
   xPercent    Float
   yPercent    Float
   note        String?
-  sector      YardSector?
+  sector      String?
   accuracy    YardLocationAccuracy
   source      YardLocationSource   @default(MANUAL)
   updatedById String
@@ -82,6 +84,24 @@ model YardLocationHistory {
   @@index([fleetId, branch, createdAt])
   @@index([branch, createdAt])
   @@index([branch, sector, createdAt])
+  @@index([updatedById])
+}
+
+model YardMap {
+  id          String   @id @default(cuid())
+  branch      String   @unique
+  name        String
+  document    Json
+  revision    Int      @default(1)
+  createdById String
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User     @relation("YardMapCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy   User     @relation("YardMapUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([updatedAt])
+  @@index([createdById])
   @@index([updatedById])
 }
 
@@ -189,10 +209,6 @@ enum MotivoNaoConformidade {
   OUTRO
 }
 
-enum YardBranch {
-  PAULINIA
-}
-
 enum YardLocationAccuracy {
   EXACT
   APPROXIMATE
@@ -201,15 +217,4 @@ enum YardLocationAccuracy {
 enum YardLocationSource {
   MANUAL
   OCR
-}
-
-enum YardSector {
-  A
-  B
-  C
-  D
-  E
-  F
-  G
-  H
 }

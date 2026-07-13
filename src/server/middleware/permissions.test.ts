@@ -12,6 +12,7 @@ test("INSPETOR não acessa painel de localizações antigas", () => {
   assert.equal(hasPermission("INSPETOR", "yard:update"), true);
   assert.equal(hasPermission("INSPETOR", "yard:history"), true);
   assert.equal(hasPermission("INSPETOR", "yard:stale"), false);
+  assert.equal(hasPermission("INSPETOR", "yard:map-edit"), false);
 });
 
 test("GESTOR possui todas as capacidades do pátio", () => {
@@ -20,4 +21,5 @@ test("GESTOR possui todas as capacidades do pátio", () => {
   assert.equal(hasPermission("GESTOR", "yard:update"), true);
   assert.equal(hasPermission("GESTOR", "yard:history"), true);
   assert.equal(hasPermission("GESTOR", "yard:stale"), true);
+  assert.equal(hasPermission("GESTOR", "yard:map-edit"), true);
 });

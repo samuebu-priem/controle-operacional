@@ -1,8 +1,6 @@
-import type { YardSectorId } from "../../../shared/yardMapConfig";
-
 export type TrailerMarkerProps = {
   fleetNumber: string;
-  sector?: YardSectorId | null;
+  sector?: string | null;
   enabled?: boolean;
 };
 

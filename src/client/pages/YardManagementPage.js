@@ -1,18 +1,18 @@
 import { createElement as h, useEffect, useMemo, useRef, useState } from "react";
-import { getYardFleetLocation, getYardHistory, listStaleYardLocations, listYardFleets, listYardLocations, updateYardFleetLocation } from "../api";
+import { createYardMap, getYardFleetLocation, getYardHistory, getYardMap, listStaleYardLocations, listYardFleets, listYardLocations, listYardMaps, saveYardMap, updateYardFleetLocation, uploadYardMapReference } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Input, { Textarea } from "../components/ui/Input";
 import YardVectorMap from "../components/yard/YardVectorMap";
+import YardMapEditor from "../components/yard/YardMapEditor";
 import { isGestor } from "../utils/auth";
 import { formatElapsed, getYardFreshness } from "../utils/yardFreshness";
-import { centerPointInViewport, getSectorForPoint, projectPercentToViewport, zoomAtPoint } from "../../shared/yardGeometry";
-import { yardMapConfig } from "../../shared/yardMapConfig";
+import { centerPointInViewport, geometryPoints, getSectorForPoint, isPointInsideYard, projectPercentToViewport, zoomAtPoint } from "../../shared/yardGeometry";
+import { createEmptyYardMapDocument } from "../../shared/yardMapConfig";
 
 const BRANCH = "PAULINIA";
-const SECTOR_OPTIONS = ["ALL", "A", "B", "C", "D", "E", "F", "G", "H"];
 
 function normalizeSearch(value) {
     return value.toLocaleLowerCase("pt-BR").replace(/[^a-z0-9]/g, "");
@@ -30,9 +30,9 @@ function accuracyLabel(value) {
     return value === "EXACT" ? "Exata" : "Aproximada";
 }
 
-function locationSector(location) {
+function locationSector(location, document) {
     if (!location) return null;
-    return location.sector || getSectorForPoint({ xPercent: location.xPercent, yPercent: location.yPercent }, BRANCH);
+    return location.sector || (document ? getSectorForPoint({ xPercent: location.xPercent, yPercent: location.yPercent }, document) : null);
 }
 
 export default function YardManagementPage() {
@@ -66,14 +66,31 @@ export default function YardManagementPage() {
     const [locatedFleetId, setLocatedFleetId] = useState(null);
     const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
     const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
+    const [branch, setBranch] = useState(BRANCH);
+    const [maps, setMaps] = useState([]);
+    const [activeMap, setActiveMap] = useState(null);
+    const [mapDocument, setMapDocument] = useState(null);
+    const [editMode, setEditMode] = useState(false);
+    const [mapSaving, setMapSaving] = useState(false);
 
     async function loadMap() {
         setLoading(true);
         setError("");
         try {
-            const [fleetResult, locationResult] = await Promise.all([listYardFleets(), listYardLocations({ branch: BRANCH, limit: 500 })]);
+            const [fleetResult, mapsResult] = await Promise.all([listYardFleets(), listYardMaps()]);
             setFrotas(fleetResult.fleets || []);
+            const availableMaps = mapsResult.maps || [];
+            setMaps(availableMaps);
+            const summary = availableMaps.find((item) => item.branch === branch) || availableMaps[0];
+            const selectedBranch = summary?.branch || branch;
+            setBranch(selectedBranch);
+            const [locationResult, mapResult] = await Promise.all([
+                listYardLocations({ branch: selectedBranch, limit: 500 }),
+                summary ? getYardMap(selectedBranch) : Promise.resolve({ map: null })
+            ]);
             setLocations(locationResult.locations || []);
+            setActiveMap(mapResult.map);
+            setMapDocument(mapResult.map?.document || null);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Falha ao carregar o pátio.");
         } finally {
@@ -84,7 +101,7 @@ export default function YardManagementPage() {
     async function loadStale(hours = staleHours) {
         if (!isGestor()) return;
         try {
-            const result = await listStaleYardLocations(hours, BRANCH);
+            const result = await listStaleYardLocations(hours, branch);
             setStaleLocations(result.locations || []);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Falha ao carregar localizações antigas.");
@@ -92,19 +109,67 @@ export default function YardManagementPage() {
     }
 
     useEffect(() => { void loadMap(); }, []);
-    useEffect(() => { void loadStale(staleHours); }, [staleHours]);
+    useEffect(() => { void loadStale(staleHours); }, [staleHours, branch]);
     useEffect(() => {
         const handleResize = () => resetMap();
         const timer = setTimeout(handleResize, 0);
         window.addEventListener("resize", handleResize);
         return () => { clearTimeout(timer); window.removeEventListener("resize", handleResize); };
     }, []);
+    useEffect(() => {
+        setMapSize({ width: 0, height: 0 });
+        const timer = setTimeout(resetMap, 0);
+        return () => clearTimeout(timer);
+    }, [mapDocument]);
 
     const suggestions = useMemo(() => {
         const normalized = normalizeSearch(query);
         if (!normalized || selectedFleet?.numeroFrota === query) return [];
         return frotas.filter((fleet) => [fleet.numeroFrota, fleet.placa, fleet.tipoEquipamento].some((field) => normalizeSearch(field || "").includes(normalized))).slice(0, 8);
     }, [frotas, query, selectedFleet]);
+
+    const sectorOptions = useMemo(() => {
+        if (!mapDocument) return ["ALL"];
+        const values = mapDocument.elements.filter((element) => element.type === "SECTOR" && element.properties.active).map((element) => element.properties.code || element.properties.name).filter(Boolean);
+        return ["ALL", ...Array.from(new Set(values))];
+    }, [mapDocument]);
+
+    async function selectBranch(nextBranch) {
+        setLoading(true); setError("");
+        try {
+            const [mapResult, locationResult] = await Promise.all([getYardMap(nextBranch), listYardLocations({ branch: nextBranch, limit: 500 })]);
+            setBranch(nextBranch); setActiveMap(mapResult.map); setMapDocument(mapResult.map.document); setLocations(locationResult.locations || []); setSectorFilter("ALL"); setSelectedFleet(null); setSelectedLocation(null);
+            setTimeout(resetMap, 0);
+        } catch (err) { setError(err instanceof Error ? err.message : "Falha ao carregar mapa."); }
+        finally { setLoading(false); }
+    }
+
+    async function createMapForBranch() {
+        const rawBranch = window.prompt("Código da filial (ex.: CUBATAO)", "");
+        if (!rawBranch) return;
+        const name = window.prompt("Nome do mapa", rawBranch);
+        if (!name) return;
+        try {
+            const result = await createYardMap({ branch: rawBranch, name, document: createEmptyYardMapDocument() });
+            setMaps((current) => [...current, result.map]); setActiveMap(result.map); setMapDocument(result.map.document); setBranch(result.map.branch); setLocations([]); setEditMode(true);
+        } catch (err) { setError(err instanceof Error ? err.message : "Falha ao criar mapa."); }
+    }
+
+    async function persistMap(document) {
+        if (!activeMap) return;
+        setMapSaving(true);
+        try {
+            const result = await saveYardMap(activeMap.id, { name: activeMap.name, revision: activeMap.revision, document });
+            setActiveMap(result.map); setMapDocument(result.map.document); setMaps((current) => current.map((item) => item.id === result.map.id ? { ...item, revision: result.map.revision, updatedAt: result.map.updatedAt } : item)); setSuccess("Mapa salvo com sucesso.");
+        } catch (err) { setError(err instanceof Error ? err.message : "Falha ao salvar mapa."); }
+        finally { setMapSaving(false); }
+    }
+
+    async function uploadReference(file) {
+        if (!activeMap) return;
+        try { const result = await uploadYardMapReference(activeMap.id, file); setActiveMap(result.map); setMapDocument(result.map.document); setSuccess("Imagem de referência importada."); return result.map.document; }
+        catch (err) { setError(err instanceof Error ? err.message : "Falha ao importar imagem."); }
+    }
 
     function focusCoordinate(xPercent, yPercent, scale = 1.8) {
         const viewport = viewportRef.current;
@@ -138,8 +203,13 @@ export default function YardManagementPage() {
             resetMap();
             return;
         }
-        const sector = yardMapConfig.yardSectors.find((item) => item.sector === value);
-        if (sector) focusCoordinate(sector.camera.xPercent, sector.camera.yPercent, sector.camera.zoom);
+        const sector = mapDocument?.elements.find((item) => item.type === "SECTOR" && (item.properties.code === value || item.properties.name === value));
+        if (sector) {
+            const points = geometryPoints(sector);
+            const x = points.reduce((sum, point) => sum + point[0], 0) / points.length;
+            const y = points.reduce((sum, point) => sum + point[1], 0) / points.length;
+            focusCoordinate(x / mapDocument.viewBox.width, y / mapDocument.viewBox.height, 2.2);
+        }
     }
 
     async function selectFleet(fleet, locationOverride) {
@@ -151,17 +221,17 @@ export default function YardManagementPage() {
         const known = locationOverride || locations.find((item) => item.fleetId === fleet.id) || null;
         setSelectedLocation(known);
         if (known) {
-            const sector = locationSector(known);
+            const sector = locationSector(known, mapDocument);
             if (sector) setSectorFilter(sector);
             setLocatedFleetId(fleet.id);
             focusCoordinate(known.xPercent, known.yPercent, 2.25);
             setTimeout(() => setLocatedFleetId((current) => current === fleet.id ? null : current), 1800);
         }
         try {
-            const detail = await getYardFleetLocation(fleet.id, BRANCH);
+            const detail = await getYardFleetLocation(fleet.id, branch);
             setSelectedLocation(detail.location);
             if (detail.location) {
-                const sector = locationSector(detail.location);
+                const sector = locationSector(detail.location, mapDocument);
                 if (sector) setSectorFilter(sector);
                 setLocatedFleetId(fleet.id);
                 focusCoordinate(detail.location.xPercent, detail.location.yPercent, 2.25);
@@ -184,6 +254,7 @@ export default function YardManagementPage() {
 
     function startMarking(fleet = selectedFleet, locationOverride) {
         if (!fleet) return;
+        if (!mapDocument) { setError("Crie ou selecione um mapa antes de registrar localizações."); return; }
         if (fleet.id !== selectedFleet?.id) void selectFleet(fleet, locationOverride);
         setDraft(null);
         setMarking(true);
@@ -256,13 +327,14 @@ export default function YardManagementPage() {
         const xPercent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
         const yPercent = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
         if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return;
-        const sector = getSectorForPoint({ xPercent, yPercent }, BRANCH);
-        if (!sector) {
-            setError("Selecione um ponto dentro de um setor do pátio e fora das vias e construções.");
+        if (!mapDocument) return;
+        if (!isPointInsideYard({ xPercent, yPercent }, mapDocument)) {
+            setError("Selecione um ponto dentro dos limites desenhados no mapa.");
             return;
         }
+        const sector = getSectorForPoint({ xPercent, yPercent }, mapDocument);
         setError("");
-        setDraft({ xPercent, yPercent, sector });
+        setDraft({ xPercent, yPercent, sector: sector || undefined });
         setMarking(false);
     }
 
@@ -282,10 +354,10 @@ export default function YardManagementPage() {
         setSaving(true);
         setError("");
         try {
-            const result = await updateYardFleetLocation(selectedFleet.id, { branch: BRANCH, ...draft, accuracy, note });
+            const result = await updateYardFleetLocation(selectedFleet.id, { branch, ...draft, accuracy, note });
             setLocations((current) => [result.location, ...current.filter((item) => item.fleetId !== selectedFleet.id)]);
             setSelectedLocation(result.location);
-            setSectorFilter(result.location.sector || draft.sector);
+            setSectorFilter(result.location.sector || draft.sector || "ALL");
             setDraft(null);
             setSuccess("Localização registrada com sucesso.");
             focusCoordinate(result.location.xPercent, result.location.yPercent);
@@ -301,7 +373,7 @@ export default function YardManagementPage() {
         if (!selectedFleet) return;
         setHistoryOpen(true);
         try {
-            const result = await getYardHistory(selectedFleet.id, { branch: BRANCH, page, limit: 10 });
+            const result = await getYardHistory(selectedFleet.id, { branch, page, limit: 10 });
             setHistory(result.history || []);
             setHistoryPage(result.pagination?.page || 1);
             setHistoryPages(result.pagination?.pages || 1);
@@ -313,20 +385,29 @@ export default function YardManagementPage() {
     function showHistorical(item) {
         setHistoricalPin(item);
         setHistoryOpen(false);
-        const sector = locationSector(item);
+        const sector = locationSector(item, mapDocument);
         if (sector) setSectorFilter(sector);
         focusCoordinate(item.xPercent, item.yPercent);
     }
 
     const pinsWithHistory = historicalPin ? [...locations, { ...historicalPin, id: `history-${historicalPin.id}`, fleet: selectedFleet, historical: true }] : locations;
-    const activePins = pinsWithHistory.filter((location) => sectorFilter === "ALL" || locationSector(location) === sectorFilter);
+    const activePins = pinsWithHistory.filter((location) => sectorFilter === "ALL" || locationSector(location, mapDocument) === sectorFilter);
     const freshness = getYardFreshness(selectedLocation?.updatedAt);
+
+    if (editMode && activeMap && mapDocument) {
+        return h(YardMapEditor, { mapName: activeMap.name, initialDocument: mapDocument, saving: mapSaving, onSave: persistMap, onUploadBackground: uploadReference, onClose: () => setEditMode(false) });
+    }
 
     return h(AppLayout, { className: "yard-page" },
         h("div", { className: "page-frame yard-page__frame" },
             h(AppHeader, { title: "Gestão de Pátio", subtitle: "Mapa da última localização registrada", showBack: true }),
             h(Card, { className: "yard-toolbar" },
-                h("div", { className: "yard-toolbar__branch" }, h("span", null, "Filial"), h("strong", null, "Paulínia")),
+                h("label", { className: "input-field yard-toolbar__map-select" },
+                    h("span", { className: "input-field__label" }, "Filial / mapa"),
+                    h("select", { className: "input", value: activeMap?.branch || "", disabled: !maps.length, onChange: (event) => void selectBranch(event.target.value) },
+                        maps.length ? maps.map((item) => h("option", { key: item.id, value: item.branch }, item.name)) : h("option", { value: "" }, "Nenhum mapa")
+                    )
+                ),
                 h("div", { className: "yard-search" },
                     h(Input, { label: "Pesquisar frota", value: query, onChange: (event) => { setQuery(event.target.value); setSelectedFleet(null); }, onKeyDown: (event) => { if (event.key === "Enter") searchFleet(); }, placeholder: "Número da frota ou placa", autoComplete: "off" }),
                     suggestions.length ? h("div", { className: "yard-suggestions", role: "listbox" }, suggestions.map((fleet) => h("button", { type: "button", key: fleet.id, onClick: () => void selectFleet(fleet) }, h("strong", null, `Frota ${fleet.numeroFrota}`), h("span", null, `${fleet.placa} · ${fleet.tipoEquipamento}`)))) : null,
@@ -335,9 +416,13 @@ export default function YardManagementPage() {
                 h("label", { className: "input-field yard-sector-filter" },
                     h("span", { className: "input-field__label" }, "Setor"),
                     h("select", { className: "input", value: sectorFilter, onChange: (event) => focusSector(event.target.value) },
-                        SECTOR_OPTIONS.map((sector) => h("option", { key: sector, value: sector }, sector === "ALL" ? "Todos" : `Setor ${sector}`))
+                        sectorOptions.map((sector) => h("option", { key: sector, value: sector }, sector === "ALL" ? "Todos" : sector))
                     )
-                )
+                ),
+                isGestor() ? h("div", { className: "yard-map-admin-actions" },
+                    h(Button, { variant: "secondary", onClick: () => void createMapForBranch() }, "Novo mapa"),
+                    h(Button, { disabled: !activeMap, onClick: () => setEditMode(true) }, "Editar mapa")
+                ) : null
             ),
             error ? h("p", { className: "notice notice--error", role: "alert" }, error) : null,
             success ? h("p", { className: "notice notice--success", role: "status" }, success) : null,
@@ -345,21 +430,21 @@ export default function YardManagementPage() {
             h("div", { className: "yard-layout" },
                 h("section", { className: `yard-map-card${marking ? " yard-map-card--marking" : ""}${transform.scale >= 1.5 ? " yard-map-card--zoomed" : ""}` },
                     h("div", { className: "yard-map-head" },
-                        h("div", null, h("p", { className: "card-label" }, "PAULÍNIA"), h("h2", { className: "section-title" }, "Última localização registrada")),
+                        h("div", null, h("p", { className: "card-label" }, activeMap?.branch || "SEM MAPA"), h("h2", { className: "section-title" }, activeMap?.name || "Cadastre o mapa desta filial")),
                         h("div", { className: "yard-zoom" }, h("button", { type: "button", onClick: () => zoom(-0.35), "aria-label": "Diminuir zoom" }, "−"), h("button", { type: "button", onClick: resetMap }, "Centralizar"), h("button", { type: "button", onClick: () => zoom(0.35), "aria-label": "Aumentar zoom" }, "+"))
                     ),
                     marking ? h("p", { className: "yard-marking-instruction" }, "Toque no ponto aproximado onde a frota foi deixada. Arraste para navegar.") : null,
                     h("div", { ref: viewportRef, className: "yard-map-viewport", onPointerDown: mapPointerDown, onPointerMove: mapPointerMove, onPointerUp: mapPointerUp, onPointerCancel: (event) => { pointersRef.current.delete(event.pointerId); dragRef.current = null; pinchRef.current = null; }, onWheel: (event) => { event.preventDefault(); zoom(event.deltaY < 0 ? .25 : -.25, event.clientX, event.clientY); } },
                         h("div", { className: "yard-map-transform", style: { transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` } },
-                            h(YardVectorMap, { svgRef: mapRef, activeSector: sectorFilter === "ALL" ? null : sectorFilter, onSectorSelect: marking ? undefined : focusSector })
+                            mapDocument ? h(YardVectorMap, { document: mapDocument, svgRef: mapRef, activeSector: sectorFilter === "ALL" ? null : sectorFilter }) : h("div", { className: "yard-map-empty" }, isGestor() ? "Use ‘Novo mapa’ para começar o desenho do pátio." : "Nenhum mapa configurado para esta filial.")
                         ),
-                        mapSize.width > 0 ? h("div", { className: "yard-pin-layer" },
+                        mapDocument && mapSize.width > 0 ? h("div", { className: "yard-pin-layer" },
                             activePins.map((location) => {
                                 const itemFreshness = getYardFreshness(location.updatedAt || location.createdAt);
                                 const selected = location.fleetId === selectedFleet?.id && !location.historical;
                                 const located = location.fleetId === locatedFleetId && !location.historical;
                                 const projected = projectPercentToViewport(location, transform, mapSize);
-                                return h("button", { type: "button", key: location.id, className: `yard-pin yard-pin--${location.historical ? "history" : itemFreshness.color}${selected ? " yard-pin--selected" : ""}${located ? " yard-pin--located" : ""}`, style: { left: `${projected.x}px`, top: `${projected.y}px` }, title: `Frota ${location.fleet?.numeroFrota || ""} · Setor ${locationSector(location) || "não definido"} · ${formatElapsed(location.updatedAt || location.createdAt)}`, onPointerDown: (event) => event.stopPropagation(), onClick: () => location.fleet && void selectFleet(location.fleet, location) }, h("span", { className: "yard-pin__dot" }), h("span", { className: "yard-pin__label" }, location.fleet?.numeroFrota || "Frota"));
+                                return h("button", { type: "button", key: location.id, className: `yard-pin yard-pin--${location.historical ? "history" : itemFreshness.color}${selected ? " yard-pin--selected" : ""}${located ? " yard-pin--located" : ""}`, style: { left: `${projected.x}px`, top: `${projected.y}px` }, title: `Frota ${location.fleet?.numeroFrota || ""} · Setor ${locationSector(location, mapDocument) || "não definido"} · ${formatElapsed(location.updatedAt || location.createdAt)}`, onPointerDown: (event) => event.stopPropagation(), onClick: () => location.fleet && void selectFleet(location.fleet, location) }, h("span", { className: "yard-pin__dot" }), h("span", { className: "yard-pin__label" }, location.fleet?.numeroFrota || "Frota"));
                             }),
                             draft ? (() => { const projected = projectPercentToViewport(draft, transform, mapSize); return h("span", { className: "yard-pin yard-pin--draft", style: { left: `${projected.x}px`, top: `${projected.y}px` } }, h("span", { className: "yard-pin__dot" }), h("span", { className: "yard-pin__label" }, selectedFleet?.numeroFrota)); })() : null
                         ) : null
@@ -381,8 +466,8 @@ export default function YardManagementPage() {
                         h("dl", { className: "yard-detail-list" },
                             h("div", null, h("dt", null, "Placa"), h("dd", null, selectedFleet.placa || "Não informada")),
                             h("div", null, h("dt", null, "Equipamento"), h("dd", null, selectedFleet.tipoEquipamento || "Não informado")),
-                            h("div", null, h("dt", null, "Filial"), h("dd", null, "Paulínia")),
-                            selectedLocation ? h("div", null, h("dt", null, "Setor"), h("dd", null, locationSector(selectedLocation) ? `Setor ${locationSector(selectedLocation)}` : "Registro anterior ao mapa vetorial")) : null,
+                            h("div", null, h("dt", null, "Filial"), h("dd", null, activeMap?.name || branch)),
+                            selectedLocation ? h("div", null, h("dt", null, "Setor"), h("dd", null, locationSector(selectedLocation, mapDocument) || "Sem setor definido")) : null,
                             selectedLocation ? h("div", null, h("dt", null, "Última localização registrada"), h("dd", null, `${dateTime(selectedLocation.updatedAt)} (${formatElapsed(selectedLocation.updatedAt)})`)) : null,
                             selectedLocation ? h("div", null, h("dt", null, "Precisão"), h("dd", null, accuracyLabel(selectedLocation.accuracy))) : null,
                             selectedLocation ? h("div", null, h("dt", null, "Atualizado por"), h("dd", null, userName(selectedLocation))) : null,
@@ -399,7 +484,7 @@ export default function YardManagementPage() {
                     staleLocations.map((location) => h("article", { key: location.id },
                         h("div", null,
                             h("strong", null, `Frota ${location.fleet.numeroFrota}`),
-                            h("span", null, `${formatElapsed(location.updatedAt)} · Setor ${locationSector(location) || "não definido"} · ${userName(location)}`),
+                            h("span", null, `${formatElapsed(location.updatedAt)} · Setor ${locationSector(location, mapDocument) || "não definido"} · ${userName(location)}`),
                             h("small", null, location.note || "Sem observação")
                         ),
                         h("div", null,
@@ -413,7 +498,7 @@ export default function YardManagementPage() {
         draft ? h("div", { className: "modal-overlay", role: "presentation", onClick: () => setDraft(null) }, h("div", { className: "modal yard-confirm-modal", role: "dialog", "aria-modal": "true", onClick: (event) => event.stopPropagation() },
             h("h2", { className: "modal__title" }, "Confirmar localização"),
             h("p", { className: "yard-warning" }, "Registre o ponto aproximado onde a frota foi deixada. Esta informação representa a última localização conhecida, não uma localização em tempo real."),
-            h("div", { className: "yard-readonly-grid" }, h("p", null, h("span", null, "Frota"), h("strong", null, selectedFleet?.numeroFrota)), h("p", null, h("span", null, "Filial"), h("strong", null, "Paulínia")), h("p", null, h("span", null, "Setor"), h("strong", null, draft.sector))),
+            h("div", { className: "yard-readonly-grid" }, h("p", null, h("span", null, "Frota"), h("strong", null, selectedFleet?.numeroFrota)), h("p", null, h("span", null, "Filial"), h("strong", null, activeMap?.name || branch)), h("p", null, h("span", null, "Setor"), h("strong", null, draft.sector || "Sem setor"))),
             h("label", { className: "input-field" }, h("span", { className: "input-field__label" }, "Precisão"), h("select", { className: "input", value: accuracy, onChange: (event) => setAccuracy(event.target.value) }, h("option", { value: "EXACT" }, "Exata"), h("option", { value: "APPROXIMATE" }, "Aproximada"))),
             h(Textarea, { label: "Observação (opcional)", maxLength: 500, value: note, onChange: (event) => setNote(event.target.value), placeholder: "Ex.: próximo ao prédio administrativo" }),
             h("div", { className: "modal__actions" }, h(Button, { variant: "ghost", disabled: saving, onClick: () => setDraft(null) }, "Cancelar"), h(Button, { disabled: saving, onClick: () => void saveLocation() }, saving ? "Salvando..." : "Salvar localização"))
@@ -424,7 +509,7 @@ export default function YardManagementPage() {
                 history.map((item) => h("article", { key: item.id },
                     h("div", null,
                         h("strong", null, dateTime(item.createdAt)),
-                        h("span", null, `${userName(item)} · ${accuracyLabel(item.accuracy)} · Setor ${locationSector(item) || "não definido"} · Paulínia`),
+                        h("span", null, `${userName(item)} · ${accuracyLabel(item.accuracy)} · Setor ${locationSector(item, mapDocument) || "não definido"} · ${activeMap?.name || branch}`),
                         h("small", null, item.note || "Sem observação")
                     ),
                     h(Button, { variant: "secondary", onClick: () => showHistorical(item) }, "Ver no mapa")

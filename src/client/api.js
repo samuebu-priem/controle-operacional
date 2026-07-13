@@ -193,3 +193,25 @@ export async function listStaleYardLocations(hours = 2, branch = "PAULINIA") {
     const params = new URLSearchParams({ branch, hours: String(hours), limit: "100" });
     return request(`/api/yard/stale?${params.toString()}`);
 }
+
+export async function listYardMaps() {
+    return request("/api/yard/maps");
+}
+
+export async function getYardMap(branch) {
+    return request(`/api/yard/maps/${encodeURIComponent(branch)}`);
+}
+
+export async function createYardMap(payload) {
+    return request("/api/yard/maps", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function saveYardMap(id, payload) {
+    return request(`/api/yard/maps/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export async function uploadYardMapReference(id, file) {
+    const formData = new FormData();
+    formData.append("image", file);
+    return request(`/api/yard/maps/${encodeURIComponent(id)}/reference-image`, { method: "POST", body: formData });
+}
