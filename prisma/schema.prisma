@@ -18,10 +18,8 @@ model User {
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
   inspecoes           Inspecao[]
-  yardLocations       YardLocation[]
-  yardLocationHistory YardLocationHistory[]
-  yardMapsCreated     YardMap[]             @relation("YardMapCreatedBy")
-  yardMapsUpdated     YardMap[]             @relation("YardMapUpdatedBy")
+  patioAllocationsRegistered PatioAllocation[] @relation("PatioAllocationRegisteredBy")
+  patioAllocationsReleased   PatioAllocation[] @relation("PatioAllocationReleasedBy")
 
   @@index([role])
 }
@@ -37,100 +35,64 @@ model Frota {
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
   inspecoes           Inspecao[]
-  yardLocations       YardLocation[]
-  yardLocationHistory YardLocationHistory[]
+  patioAllocations    PatioAllocation[]
 
   @@index([numeroFrota])
   @@index([placa])
 }
 
-model YardLocation {
-  id          String               @id @default(cuid())
-  fleetId     String
-  branch      String
-  xPercent    Float
-  yPercent    Float
-  note        String?
-  sector      String?
-  accuracy    YardLocationAccuracy
-  source      YardLocationSource   @default(MANUAL)
-  updatedById String
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  fleet       Frota                @relation(fields: [fleetId], references: [id], onDelete: Restrict)
-  updatedBy   User                 @relation(fields: [updatedById], references: [id])
+model Patio {
+  id        String      @id @default(cuid())
+  branch    String
+  nome      String
+  ordem     Int         @default(0)
+  ativo     Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  areas     PatioArea[]
 
-  @@unique([fleetId, branch])
-  @@index([branch, updatedAt])
-  @@index([branch, sector, updatedAt])
-  @@index([updatedById])
+  @@unique([branch, nome])
+  @@index([branch, ativo, ordem])
 }
 
-model YardLocationHistory {
-  id          String               @id @default(cuid())
-  fleetId     String
-  branch      String
-  xPercent    Float
-  yPercent    Float
-  note        String?
-  sector      String?
-  accuracy    YardLocationAccuracy
-  source      YardLocationSource   @default(MANUAL)
-  updatedById String
-  createdAt   DateTime             @default(now())
-  fleet       Frota                @relation(fields: [fleetId], references: [id], onDelete: Restrict)
-  updatedBy   User                 @relation(fields: [updatedById], references: [id])
+model PatioArea {
+  id          String             @id @default(cuid())
+  patioId     String
+  nome        String
+  capacidade Int
+  ordem       Int                @default(0)
+  x           Float
+  y           Float
+  cor         String             @default("#22c55e")
+  ativo       Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  patio       Patio              @relation(fields: [patioId], references: [id], onDelete: Cascade)
+  allocations PatioAllocation[]
 
-  @@index([fleetId, branch, createdAt])
-  @@index([branch, createdAt])
-  @@index([branch, sector, createdAt])
-  @@index([updatedById])
+  @@unique([patioId, nome])
+  @@index([patioId, ativo, ordem])
 }
 
-model YardMap {
-  id          String   @id @default(cuid())
-  branch      String   @unique
-  name        String
-  document    Json
-  revision    Int      @default(1)
-  createdById String
-  updatedById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdBy   User     @relation("YardMapCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy   User     @relation("YardMapUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
-  elements    YardMapElement[]
+model PatioAllocation {
+  id             String    @id @default(cuid())
+  fleetId        String
+  areaId         String
+  registeredById String
+  releasedById   String?
+  createdAt      DateTime  @default(now())
+  releasedAt     DateTime?
+  note           String?
+  releaseNote    String?
+  fleet          Frota     @relation(fields: [fleetId], references: [id], onDelete: Restrict)
+  area           PatioArea @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  registeredBy   User      @relation("PatioAllocationRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+  releasedBy     User?     @relation("PatioAllocationReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
 
-  @@index([updatedAt])
-  @@index([createdById])
-  @@index([updatedById])
-}
-
-model YardMapElement {
-  id          String           @id
-  mapId       String
-  parentId    String?
-  groupId     String?
-  category    String
-  elementType String
-  name        String
-  layerId     String
-  geometry    Json
-  style       Json
-  properties  Json
-  zIndex      Int
-  locked      Boolean          @default(false)
-  visible     Boolean          @default(true)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  map         YardMap          @relation(fields: [mapId], references: [id], onDelete: Cascade)
-  parent      YardMapElement?  @relation("YardElementHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children    YardMapElement[] @relation("YardElementHierarchy")
-
-  @@index([mapId, zIndex])
-  @@index([parentId])
-  @@index([groupId])
-  @@index([category, elementType])
+  @@index([areaId, releasedAt, createdAt])
+  @@index([fleetId, releasedAt, createdAt])
+  @@index([registeredById])
+  @@index([releasedById])
 }
 
 model Collaborator {
@@ -235,14 +197,4 @@ enum MotivoNaoConformidade {
   PRODUTO_RESIDUAL
   VALVULA_CONTAMINADA
   OUTRO
-}
-
-enum YardLocationAccuracy {
-  EXACT
-  APPROXIMATE
-}
-
-enum YardLocationSource {
-  MANUAL
-  OCR
 }

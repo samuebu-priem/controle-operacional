@@ -1,136 +1,105 @@
 import { prisma } from "../../lib/prisma";
 import { AppError } from "../../middleware/errorHandler";
-import { getSectorForPoint, isPointInsideYard, validateYardMapDocument } from "../../../shared/yardGeometry";
 
-function hydrateMap(map: any) {
-  return validateYardMapDocument({
-    ...map.document,
-    schemaVersion: 2,
-    elements: (map.elements || []).map((element: any) => ({
-      id: element.id, parentId: element.parentId, groupId: element.groupId, category: element.category,
-      type: element.elementType, name: element.name, layerId: element.layerId, geometry: element.geometry,
-      style: element.style, properties: element.properties, zIndex: element.zIndex, locked: element.locked,
-      visible: element.visible, createdAt: element.createdAt.toISOString(), updatedAt: element.updatedAt.toISOString()
-    }))
-  });
+export type AreaOccupancy = "FREE" | "WARNING" | "FULL";
+
+export function occupancyState(capacity: number, occupied: number): AreaOccupancy {
+  if (occupied >= capacity) return "FULL";
+  return (capacity - occupied) / capacity < .4 ? "WARNING" : "FREE";
 }
 
-type YardLocationAccuracy = "EXACT" | "APPROXIMATE";
-type YardLocationSource = "MANUAL" | "OCR";
-
-export type UpdateYardLocationInput = {
-  fleetId: string;
-  branch: string;
-  xPercent: number;
-  yPercent: number;
-  note: string | null;
-  accuracy: YardLocationAccuracy;
-  source: YardLocationSource;
-  sector?: string | null;
-  updatedById: string;
-};
-
-const MAX_NOTE_LENGTH = 500;
-
-function validateServiceInput(input: UpdateYardLocationInput) {
-  if (!input.fleetId || !input.updatedById) {
-    throw new AppError("Frota e usuário responsável são obrigatórios.", 400, "BAD_REQUEST");
-  }
-  if (!/^[A-Z0-9_-]{2,40}$/.test(input.branch)) {
-    throw new AppError("Filial inválida.", 400, "BAD_REQUEST");
-  }
-  if (!Number.isFinite(input.xPercent) || input.xPercent < 0 || input.xPercent > 1) {
-    throw new AppError("xPercent deve ser um número entre 0 e 1.", 400, "BAD_REQUEST");
-  }
-  if (!Number.isFinite(input.yPercent) || input.yPercent < 0 || input.yPercent > 1) {
-    throw new AppError("yPercent deve ser um número entre 0 e 1.", 400, "BAD_REQUEST");
-  }
-  if (!(["EXACT", "APPROXIMATE"] as const).includes(input.accuracy)) {
-    throw new AppError("Precisão inválida.", 400, "BAD_REQUEST");
-  }
-  if (!(["MANUAL", "OCR"] as const).includes(input.source)) {
-    throw new AppError("Origem da localização inválida.", 400, "BAD_REQUEST");
-  }
-
-  const note = input.note?.replace(/[\u0000-\u001F\u007F]/g, " ").trim() || null;
-  if (note && note.length > MAX_NOTE_LENGTH) {
-    throw new AppError(`A observação deve ter no máximo ${MAX_NOTE_LENGTH} caracteres.`, 400, "BAD_REQUEST");
-  }
-
-  return { ...input, note };
+export function areaSummary(area: any) {
+  const allocations = area.allocations || [];
+  const occupied = allocations.length;
+  return {
+    id: area.id, patioId: area.patioId, nome: area.nome, capacidade: area.capacidade, ordem: area.ordem,
+    x: area.x, y: area.y, cor: area.cor, ativo: area.ativo, occupied, available: Math.max(0, area.capacidade - occupied),
+    occupancyPercent: area.capacidade > 0 ? Math.min(100, Math.round(occupied / area.capacidade * 100)) : 100,
+    state: occupancyState(area.capacidade, occupied), allocations
+  };
 }
 
-const yardLocationInclude = {
+const activeAllocationInclude = {
   fleet: true,
-  updatedBy: {
-    select: { id: true, name: true, fullName: true }
-  }
+  registeredBy: { select: { id: true, name: true, fullName: true } }
 } as const;
 
-/** Shared write path for manual updates now and OCR integrations in the future. */
-export async function updateYardLocation(input: UpdateYardLocationInput) {
-  const validated = validateServiceInput(input);
+export async function getOperationalMap(branch: string) {
+  const patios = await prisma.patio.findMany({
+    where: { branch, ativo: true }, orderBy: { ordem: "asc" },
+    include: { areas: { where: { ativo: true }, orderBy: { ordem: "asc" }, include: { allocations: { where: { releasedAt: null }, orderBy: { createdAt: "desc" }, include: activeAllocationInclude } } } }
+  });
+  const result = patios.map((patio: any) => ({ ...patio, areas: patio.areas.map(areaSummary) }));
+  const areas = result.flatMap((patio: any) => patio.areas);
+  return {
+    branch, patios: result,
+    summary: { capacity: areas.reduce((sum: number, area: any) => sum + area.capacidade, 0), occupied: areas.reduce((sum: number, area: any) => sum + area.occupied, 0), available: areas.reduce((sum: number, area: any) => sum + area.available, 0), areas: areas.length }
+  };
+}
 
-  return prisma.$transaction(async (tx: typeof prisma) => {
-    const [fleet, user, yardMap] = await Promise.all([
-      tx.frota.findUnique({ where: { id: validated.fleetId }, select: { id: true } }),
-      tx.user.findUnique({ where: { id: validated.updatedById }, select: { id: true } }),
-      tx.yardMap.findUnique({ where: { branch: validated.branch }, include: { elements: { orderBy: { zIndex: "asc" } } } })
-    ]);
-
-    if (!fleet) {
-      throw new AppError("Frota não encontrada.", 404, "NOT_FOUND");
+async function serialTransaction<T>(work: (tx: any) => Promise<T>) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await prisma.$transaction(work, { isolationLevel: "Serializable" as any }); }
+    catch (error: any) {
+      if (error?.code === "P2002") throw new AppError("Esta frota já possui uma localização ativa.", 409, "FLEET_ALREADY_ALLOCATED");
+      if (error?.code !== "P2034" || attempt === 2) throw error;
     }
-    if (!user) {
-      throw new AppError("Usuário autenticado não encontrado.", 401, "UNAUTHORIZED");
-    }
-    if (!yardMap) {
-      throw new AppError("A filial ainda não possui um mapa configurado.", 400, "YARD_MAP_NOT_FOUND");
-    }
-    const document = hydrateMap(yardMap);
-    const point = { xPercent: validated.xPercent, yPercent: validated.yPercent };
-    if (!isPointInsideYard(point, document)) {
-      throw new AppError("O ponto deve estar dentro dos limites permitidos do mapa.", 400, "OUTSIDE_YARD");
-    }
-    const sector = getSectorForPoint(point, document);
-    if (validated.sector && validated.sector !== sector) {
-      throw new AppError("O setor informado não corresponde às coordenadas selecionadas.", 400, "INVALID_SECTOR");
-    }
+  }
+  throw new AppError("Conflito ao atualizar a ocupação. Tente novamente.", 409, "ALLOCATION_CONFLICT");
+}
 
-    const data = {
-      xPercent: validated.xPercent,
-      yPercent: validated.yPercent,
-      note: validated.note,
-      sector,
-      accuracy: validated.accuracy,
-      source: validated.source,
-      updatedById: validated.updatedById
-    };
+async function lockAndValidateArea(tx: any, areaId: string) {
+  await tx.$queryRawUnsafe('SELECT "id" FROM "PatioArea" WHERE "id" = $1 FOR UPDATE', areaId);
+  const area = await tx.patioArea.findUnique({ where: { id: areaId }, include: { patio: true } });
+  if (!area || !area.ativo || !area.patio.ativo) throw new AppError("Área operacional não encontrada ou inativa.", 404, "AREA_NOT_FOUND");
+  const occupied = await tx.patioAllocation.count({ where: { areaId, releasedAt: null } });
+  if (occupied >= area.capacidade) throw new AppError("Esta área atingiu sua capacidade máxima.", 409, "AREA_FULL");
+  return area;
+}
 
-    const location = await tx.yardLocation.upsert({
-      where: {
-        fleetId_branch: { fleetId: validated.fleetId, branch: validated.branch }
-      },
-      create: {
-        fleetId: validated.fleetId,
-        branch: validated.branch,
-        ...data
-      },
-      update: data,
-      include: yardLocationInclude
-    });
-
-    const history = await tx.yardLocationHistory.create({
-      data: {
-        fleetId: validated.fleetId,
-        branch: validated.branch,
-        ...data
-      },
-      include: yardLocationInclude
-    });
-
-    return { location, history };
+export async function allocateFleet(input: { fleetId: string; areaId: string; note?: string | null; userId: string }) {
+  return serialTransaction(async (tx) => {
+    const area = await lockAndValidateArea(tx, input.areaId);
+    const fleet = await tx.frota.findUnique({ where: { id: input.fleetId }, select: { id: true } });
+    if (!fleet) throw new AppError("Frota não encontrada.", 404, "FLEET_NOT_FOUND");
+    const current = await tx.patioAllocation.findFirst({ where: { fleetId: input.fleetId, releasedAt: null } });
+    if (current) throw new AppError("A frota já está registrada em uma área. Use Mover.", 409, "FLEET_ALREADY_ALLOCATED");
+    return tx.patioAllocation.create({ data: { fleetId: input.fleetId, areaId: area.id, registeredById: input.userId, note: input.note || null }, include: { ...activeAllocationInclude, area: { include: { patio: true } } } });
   });
 }
 
-export { yardLocationInclude };
+export async function moveFleet(input: { fleetId: string; areaId: string; note?: string | null; userId: string }) {
+  return serialTransaction(async (tx) => {
+    const target = await lockAndValidateArea(tx, input.areaId);
+    const current = await tx.patioAllocation.findFirst({ where: { fleetId: input.fleetId, releasedAt: null } });
+    if (!current) throw new AppError("A frota não possui localização ativa.", 409, "FLEET_NOT_ALLOCATED");
+    if (current.areaId === target.id) throw new AppError("A frota já está nesta área.", 400, "SAME_AREA");
+    const now = new Date();
+    await tx.patioAllocation.update({ where: { id: current.id }, data: { releasedAt: now, releasedById: input.userId, releaseNote: input.note || "Movimentação entre áreas" } });
+    return tx.patioAllocation.create({ data: { fleetId: input.fleetId, areaId: target.id, registeredById: input.userId, note: input.note || null }, include: { ...activeAllocationInclude, area: { include: { patio: true } } } });
+  });
+}
+
+export async function releaseFleet(input: { allocationId: string; note?: string | null; userId: string }) {
+  return serialTransaction(async (tx) => {
+    const current = await tx.patioAllocation.findUnique({ where: { id: input.allocationId } });
+    if (!current || current.releasedAt) throw new AppError("Esta localização já foi liberada.", 409, "ALLOCATION_RELEASED");
+    return tx.patioAllocation.update({ where: { id: current.id }, data: { releasedAt: new Date(), releasedById: input.userId, releaseNote: input.note || null } });
+  });
+}
+
+export async function getFleetLocation(fleetId: string) {
+  const fleet = await prisma.frota.findUnique({ where: { id: fleetId } });
+  if (!fleet) throw new AppError("Frota não encontrada.", 404, "FLEET_NOT_FOUND");
+  const allocation = await prisma.patioAllocation.findFirst({ where: { fleetId, releasedAt: null }, include: { area: { include: { patio: true } }, registeredBy: { select: { id: true, name: true, fullName: true } } } });
+  return { fleet, allocation };
+}
+
+export async function getFleetHistory(fleetId: string, page: number, limit: number) {
+  const where = { fleetId };
+  const [allocations, total] = await prisma.$transaction([
+    prisma.patioAllocation.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit, include: { area: { include: { patio: true } }, registeredBy: { select: { id: true, name: true, fullName: true } }, releasedBy: { select: { id: true, name: true, fullName: true } } } }),
+    prisma.patioAllocation.count({ where })
+  ]);
+  return { allocations, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+}

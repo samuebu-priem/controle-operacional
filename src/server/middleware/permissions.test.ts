@@ -7,12 +7,11 @@ test("permissões de pátio falham fechadas sem role válida", () => {
   assert.equal(hasPermission("DESCONHECIDO", "yard:view"), false);
 });
 
-test("INSPETOR não acessa painel de localizações antigas", () => {
+test("INSPETOR opera frotas, mas não administra áreas", () => {
   assert.equal(hasPermission("INSPETOR", "yard:view"), true);
   assert.equal(hasPermission("INSPETOR", "yard:update"), true);
   assert.equal(hasPermission("INSPETOR", "yard:history"), true);
-  assert.equal(hasPermission("INSPETOR", "yard:stale"), false);
-  assert.equal(hasPermission("INSPETOR", "yard:map-edit"), false);
+  assert.equal(hasPermission("INSPETOR", "yard:areas-manage"), false);
 });
 
 test("GESTOR possui todas as capacidades do pátio", () => {
@@ -20,6 +19,5 @@ test("GESTOR possui todas as capacidades do pátio", () => {
   assert.equal(hasPermission("GESTOR", "yard:search"), true);
   assert.equal(hasPermission("GESTOR", "yard:update"), true);
   assert.equal(hasPermission("GESTOR", "yard:history"), true);
-  assert.equal(hasPermission("GESTOR", "yard:stale"), true);
-  assert.equal(hasPermission("GESTOR", "yard:map-edit"), true);
+  assert.equal(hasPermission("GESTOR", "yard:areas-manage"), true);
 });

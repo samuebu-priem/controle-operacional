@@ -156,66 +156,47 @@ export async function updateCollaborator(id, payload) {
     });
 }
 
-export async function listYardLocations(filters = {}) {
-    const params = new URLSearchParams({ branch: filters.branch ?? "PAULINIA" });
-    if (filters.search?.trim()) params.set("search", filters.search.trim());
-    if (filters.stale) params.set("stale", String(filters.stale));
-    if (filters.page) params.set("page", String(filters.page));
-    if (filters.limit) params.set("limit", String(filters.limit));
-    return request(`/api/yard/locations?${params.toString()}`);
-}
-
 export async function listYardFleets(search = "") {
     const params = new URLSearchParams();
     if (search.trim()) params.set("search", search.trim());
     return request(`/api/yard/fleets?${params.toString()}`);
 }
 
-export async function getYardFleetLocation(fleetId, branch = "PAULINIA") {
-    return request(`/api/yard/locations/${encodeURIComponent(fleetId)}?branch=${encodeURIComponent(branch)}`);
+export async function getOperationalYardMap(branch = "PAULINIA") {
+    return request(`/api/yard/dashboard?branch=${encodeURIComponent(branch)}`);
 }
 
-export async function updateYardFleetLocation(fleetId, payload) {
-    return request(`/api/yard/locations/${encodeURIComponent(fleetId)}`, {
-        method: "PUT",
-        body: JSON.stringify(payload)
-    });
+export async function getYardFleetLocation(fleetId) {
+    return request(`/api/yard/fleets/${encodeURIComponent(fleetId)}`);
 }
 
 export async function getYardHistory(fleetId, filters = {}) {
-    const params = new URLSearchParams({ branch: filters.branch ?? "PAULINIA" });
+    const params = new URLSearchParams();
     if (filters.page) params.set("page", String(filters.page));
     if (filters.limit) params.set("limit", String(filters.limit));
-    return request(`/api/yard/locations/${encodeURIComponent(fleetId)}/history?${params.toString()}`);
+    return request(`/api/yard/fleets/${encodeURIComponent(fleetId)}/history?${params.toString()}`);
 }
 
-export async function listStaleYardLocations(hours = 2, branch = "PAULINIA") {
-    const params = new URLSearchParams({ branch, hours: String(hours), limit: "100" });
-    return request(`/api/yard/stale?${params.toString()}`);
+export async function allocateYardFleet(payload) {
+    return request("/api/yard/allocations", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function listYardMaps() {
-    return request("/api/yard/maps");
+export async function moveYardFleet(payload) {
+    return request("/api/yard/allocations/move", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function getYardMap(branch) {
-    return request(`/api/yard/maps/${encodeURIComponent(branch)}`);
+export async function releaseYardFleet(allocationId, note = "") {
+    return request(`/api/yard/allocations/${encodeURIComponent(allocationId)}/release`, { method: "POST", body: JSON.stringify({ note }) });
 }
 
-export async function createYardMap(payload) {
-    return request("/api/yard/maps", { method: "POST", body: JSON.stringify(payload) });
+export async function createPatio(payload) {
+    return request("/api/yard/patios", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function saveYardMap(id, payload) {
-    return request(`/api/yard/maps/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
+export async function createPatioArea(payload) {
+    return request("/api/yard/areas", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function deleteYardMap(id) {
-    return request(`/api/yard/maps/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-export async function uploadYardMapReference(id, file) {
-    const formData = new FormData();
-    formData.append("image", file);
-    return request(`/api/yard/maps/${encodeURIComponent(id)}/reference-image`, { method: "POST", body: formData });
+export async function updatePatioArea(id, payload) {
+    return request(`/api/yard/areas/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) });
 }

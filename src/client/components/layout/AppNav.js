@@ -8,7 +8,7 @@ const items = [
   { label: "Nova inspecao", to: "/nova-inspecao" },
   { label: "Historico", to: "/historico" },
   { label: "Registro de frotas", to: "/registro-frotas" },
-  { label: "Gestao de Patio", to: "/patio", beta: true },
+  { label: "Gestao de Patio", to: "/patio" },
   { label: "Painel Gerencial", to: "/painel-gerencial" }
 ];
 
@@ -19,6 +19,6 @@ export default function AppNav() {
   return _jsx("nav", {
     className: "app-nav",
     "aria-label": "Navegacao principal",
-    children: visibleItems.map((item) => _jsx(NavLink, { to: item.to, end: item.to === "/", className: ({ isActive }) => `nav-item${isActive ? " active" : ""}`, children: item.beta ? `${item.label}  BETA` : item.label }, item.to))
+    children: visibleItems.map((item) => _jsx(NavLink, { to: item.to, end: item.to === "/", className: ({ isActive }) => `nav-item${isActive ? " active" : ""}`, children: item.label }, item.to))
   });
 }
