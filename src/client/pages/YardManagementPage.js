@@ -1,4 +1,4 @@
-import { createElement as h, useEffect, useMemo, useState } from "react";
+import { createElement as h, useEffect, useMemo, useRef, useState } from "react";
 import { allocateYardFleet, createPatio, createPatioArea, getOperationalYardMap, getYardFleetLocation, getYardHistory, listYardFleets, moveYardFleet, releaseYardFleet, updatePatioArea } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
@@ -10,8 +10,17 @@ const BRANCH = "PAULINIA";
 const stateLabel = { FREE: "Livre", WARNING: "Atenção", FULL: "Lotada" };
 const elapsed = (value) => { if (!value) return "não registrada"; const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000)); return minutes < 1 ? "agora" : minutes < 60 ? `há ${minutes} min` : minutes < 1440 ? `há ${Math.floor(minutes / 60)} h` : `há ${Math.floor(minutes / 1440)} d`; };
 const responsible = (allocation) => allocation?.registeredBy?.fullName || allocation?.registeredBy?.name || "Não informado";
+const visualState = (area) => area.occupied >= area.capacidade ? "FULL" : area.available / area.capacidade > .4 ? "FREE" : "WARNING";
+function gridPosition(area, areas) {
+  const xs = areas.map((item) => item.x), ys = areas.map((item) => item.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const normalizedX = maxX === minX ? .5 : (area.x - minX) / (maxX - minX);
+  const normalizedY = maxY === minY ? .5 : (area.y - minY) / (maxY - minY);
+  return { "--area-column": Math.round(normalizedX * 3) + 1, "--area-row": Math.round(normalizedY * 2) + 1, order: area.ordem };
+}
 
 export default function YardManagementPage() {
+  const focusTimerRef = useRef(null);
   const params = new URLSearchParams(window.location.search);
   const [dashboard, setDashboard] = useState(null), [fleets, setFleets] = useState([]), [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(""), [selectedFleet, setSelectedFleet] = useState(null), [selectedAllocation, setSelectedAllocation] = useState(null);
@@ -26,7 +35,7 @@ export default function YardManagementPage() {
       const [mapResult, fleetResult] = await Promise.all([getOperationalYardMap(BRANCH), listYardFleets()]);
       setDashboard(mapResult); setFleets(fleetResult.fleets || []);
       const areaId = params.get("areaId");
-      if (areaId) setSelectedArea(mapResult.patios.flatMap((patio) => patio.areas).find((area) => area.id === areaId) || null);
+      if (areaId) { const patio = mapResult.patios.find((item) => item.areas.some((area) => area.id === areaId)); const area = patio?.areas.find((item) => item.id === areaId); if (area) setSelectedArea({ ...area, patio }); }
       const fleetId = params.get("fleetId");
       if (fleetId) { const fleet = (fleetResult.fleets || []).find((item) => item.id === fleetId); if (fleet) await selectFleet(fleet, mapResult); }
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao carregar o mapa operacional."); }
@@ -43,8 +52,9 @@ export default function YardManagementPage() {
     try {
       const result = await getYardFleetLocation(fleet.id); setSelectedAllocation(result.allocation || null);
       if (result.allocation && map) {
-        const area = map.patios.flatMap((patio) => patio.areas).find((item) => item.id === result.allocation.areaId);
-        if (area) { setSelectedArea(area); setHighlightAreaId(area.id); }
+        const patio = map.patios.find((item) => item.areas.some((area) => area.id === result.allocation.areaId));
+        const area = patio?.areas.find((item) => item.id === result.allocation.areaId);
+        if (area) focusArea({ ...area, patio }, true);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao localizar a frota."); }
   }
@@ -79,7 +89,13 @@ export default function YardManagementPage() {
     catch (err) { setError(err instanceof Error ? err.message : "Falha ao carregar o histórico."); }
   }
 
-  function focusArea(area) { setSelectedArea(area); setHighlightAreaId(area.id); window.setTimeout(() => setHighlightAreaId((id) => id === area.id ? null : id), 2400); }
+  function focusArea(area, persistent = false) {
+    if (!area) return;
+    setSelectedArea(area); setHighlightAreaId(area.id);
+    window.clearTimeout(focusTimerRef.current);
+    window.setTimeout(() => document.querySelector(`[data-operational-area="${CSS.escape(area.id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" }), 40);
+    if (!persistent) focusTimerRef.current = window.setTimeout(() => setHighlightAreaId((id) => id === area.id ? null : id), 2400);
+  }
 
   async function saveAdmin() {
     setSaving(true); setError("");
@@ -92,34 +108,38 @@ export default function YardManagementPage() {
     finally { setSaving(false); }
   }
 
-  const detailArea = selectedAllocation?.area ? { ...selectedAllocation.area, patio: selectedAllocation.area.patio } : selectedArea;
   return h(AppLayout, { className: "operational-yard" },
     h("div", { className: "operational-yard__shell" },
       h("div", { className: "operational-yard__header" }, h(AppHeader, { title: "Gestão de Pátio", subtitle: "Mapa operacional · última área conhecida", showBack: true })),
       h("section", { className: "operational-yard__search" },
-        h("div", { className: "operational-yard__searchbox" }, h("span", { "aria-hidden": "true" }, "⌕"), h("input", { value: query, placeholder: "Pesquisar frota ou placa", onChange: (event) => { setQuery(event.target.value); setSelectedFleet(null); setSelectedAllocation(null); }, onKeyDown: (event) => { if (event.key === "Enter" && suggestions[0]) void selectFleet(suggestions[0]); } })),
+        h("div", { className: "operational-yard__searchbox" }, h("span", { "aria-hidden": "true" }, "⌕"), h("input", { value: query, placeholder: "Pesquisar frota ou placa", onChange: (event) => { setQuery(event.target.value); setSelectedFleet(null); setSelectedAllocation(null); setHighlightAreaId(null); }, onKeyDown: (event) => { if (event.key === "Enter" && suggestions[0]) void selectFleet(suggestions[0]); } })),
         suggestions.length ? h("div", { className: "operational-yard__suggestions" }, suggestions.map((fleet) => h("button", { key: fleet.id, type: "button", onClick: () => void selectFleet(fleet) }, h("strong", null, `Frota ${fleet.numeroFrota}`), h("span", null, `${fleet.placa} · ${fleet.tipoEquipamento}`)))) : null,
         h("div", { className: "operational-yard__branch" }, h("span", null, "Filial"), h("strong", null, "Paulínia")),
         isGestor() ? h(Button, { variant: "secondary", onClick: () => { setAdmin("area"); setAdminForm({ patioId: dashboard?.patios?.[0]?.id || "", nome: "", capacidade: 1, ordem: 1, x: .5, y: .5, cor: "#22c55e" }); } }, "Administrar áreas") : null
       ),
       error ? h("p", { className: "notice notice--error operational-yard__notice", role: "alert" }, error) : null,
       success ? h("p", { className: "notice notice--success operational-yard__notice", role: "status" }, success) : null,
-      h("main", { className: "operational-map", "aria-label": "Mapa ilustrativo dos pátios" },
-        h("div", { className: "operational-map__texture" }), h("div", { className: "operational-map__road operational-map__road--one" }), h("div", { className: "operational-map__road operational-map__road--two" }),
-        dashboard?.patios?.map((patio) => h("section", { key: patio.id, className: `operational-patio operational-patio--${patio.ordem}` }, h("h2", null, patio.nome))),
-        allAreas.map((area) => h("button", { key: area.id, type: "button", className: `operational-area operational-area--${area.state.toLowerCase()}${highlightAreaId === area.id ? " operational-area--highlight" : ""}`, style: { left: `${area.x * 100}%`, top: `${area.y * 100}%`, "--area-color": area.cor }, onClick: () => focusArea(area) },
-          h("span", { className: "operational-area__name" }, area.nome), h("strong", null, `${area.occupied} / ${area.capacidade}`), h("small", null, `${area.available} disponíveis`), selectedAllocation?.areaId === area.id ? h("i", { className: "operational-area__pin", title: "Última área conhecida" }, "●") : null
-        )),
-        dashboard ? h("div", { className: "operational-map__summary" }, h("strong", null, `${dashboard.summary.occupied} / ${dashboard.summary.capacity}`), h("span", null, "posições ocupadas")) : null,
+      h("main", { className: `operational-map${selectedFleet && selectedAllocation && highlightAreaId ? " operational-map--focused" : ""}`, "aria-label": "Mapa ilustrativo dos pátios" },
+        h("div", { className: "operational-map__texture" }), h("div", { className: "operational-map__road" }),
+        h("div", { className: "operational-map__yards" }, dashboard?.patios?.map((patio) => {
+          const patioOccupied = patio.areas.reduce((sum, area) => sum + area.occupied, 0), patioCapacity = patio.areas.reduce((sum, area) => sum + area.capacidade, 0);
+          return h("section", { key: patio.id, className: "operational-patio" },
+            h("header", { className: "operational-patio__header" }, h("div", null, h("span", null, "REGIÃO OPERACIONAL"), h("h2", null, patio.nome)), h("small", null, `${patioOccupied} / ${patioCapacity}`)),
+            h("div", { className: "operational-patio__areas" }, patio.areas.map((area) => h("button", { key: area.id, type: "button", "data-operational-area": area.id, className: `operational-area operational-area--${visualState(area).toLowerCase()}${highlightAreaId === area.id ? " operational-area--highlight" : ""}${selectedArea?.id === area.id ? " operational-area--selected" : ""}`, style: gridPosition(area, patio.areas), onClick: () => { setSelectedFleet(null); setSelectedAllocation(null); focusArea({ ...area, patio }); } },
+              h("span", { className: "operational-area__name" }, area.nome), h("strong", null, `${area.occupied} / ${area.capacidade}`), h("small", null, `${area.available} livres`), selectedAllocation?.areaId === area.id ? h("i", { className: "operational-area__pin", title: "Última área conhecida" }, "●") : null
+            )))
+          );
+        })),
+        dashboard ? h("div", { className: "operational-map__summary" }, h("div", null, h("strong", null, dashboard.summary.capacity), h("span", null, "posições")), h("div", null, h("strong", null, dashboard.summary.occupied), h("span", null, "ocupadas")), h("div", null, h("strong", null, dashboard.summary.available), h("span", null, "livres"))) : null,
         loading ? h("div", { className: "yard-loading" }, "Carregando mapa operacional...") : null
       ),
       h("aside", { className: `operational-sheet${selectedFleet || selectedArea ? " operational-sheet--open" : ""}` },
         selectedFleet ? h("div", { className: "operational-sheet__content" },
           h("div", { className: "operational-sheet__handle" }), h("p", { className: "card-label" }, "ÚLTIMA LOCALIZAÇÃO CONHECIDA"),
-          h("div", { className: "operational-fleet-title" }, h("div", null, h("h2", null, `Frota ${selectedFleet.numeroFrota}`), h("span", null, `${selectedFleet.placa} · ${selectedFleet.tipoEquipamento}`)), h("button", { onClick: () => { setSelectedFleet(null); setSelectedAllocation(null); } }, "×")),
+          h("div", { className: "operational-fleet-title" }, h("div", null, h("h2", null, `Frota ${selectedFleet.numeroFrota}`), h("span", null, `${selectedFleet.placa} · ${selectedFleet.tipoEquipamento}`)), h("button", { onClick: () => { setSelectedFleet(null); setSelectedAllocation(null); setHighlightAreaId(null); } }, "×")),
           selectedAllocation ? h("dl", { className: "operational-detail-grid" }, h("div", null, h("dt", null, "Filial"), h("dd", null, "Paulínia")), h("div", null, h("dt", null, "Pátio"), h("dd", null, selectedAllocation.area.patio.nome)), h("div", null, h("dt", null, "Área"), h("dd", null, selectedAllocation.area.nome)), h("div", null, h("dt", null, "Registrada"), h("dd", null, elapsed(selectedAllocation.createdAt))), h("div", null, h("dt", null, "Responsável"), h("dd", null, responsible(selectedAllocation)))) : h("p", { className: "operational-empty" }, "Esta frota não está registrada em nenhuma área do pátio."),
-          h("div", { className: "operational-sheet__actions" }, selectedAllocation ? h(Button, { onClick: () => focusArea(allAreas.find((area) => area.id === selectedAllocation.areaId) || selectedAllocation.area) }, "Ver no mapa") : null, selectedAllocation ? h(Button, { variant: "secondary", onClick: () => openAllocation("move") }, "Mover") : h(Button, { onClick: () => openAllocation("allocate") }, "Registrar área"), selectedAllocation ? h(Button, { variant: "ghost", disabled: saving, onClick: () => void release() }, "Liberar") : null, h(Button, { variant: "ghost", onClick: () => void showHistory() }, "Histórico"))
-        ) : selectedArea ? h("div", { className: "operational-sheet__content" }, h("div", { className: "operational-sheet__handle" }), h("p", { className: "card-label" }, selectedArea.patio?.nome || "ÁREA"), h("div", { className: "operational-fleet-title" }, h("h2", null, selectedArea.nome), h("button", { onClick: () => setSelectedArea(null) }, "×")), h("div", { className: "operational-capacity" }, h("div", null, h("strong", null, selectedArea.capacidade), h("span", null, "Capacidade")), h("div", null, h("strong", null, selectedArea.occupied), h("span", null, "Ocupadas")), h("div", null, h("strong", null, selectedArea.available), h("span", null, "Disponíveis"))), h("span", { className: `operational-state operational-state--${selectedArea.state.toLowerCase()}` }, stateLabel[selectedArea.state]), h("div", { className: "operational-area-fleets" }, selectedArea.allocations?.length ? selectedArea.allocations.map((allocation) => h("button", { key: allocation.id, onClick: () => void selectFleet(allocation.fleet) }, h("strong", null, `Frota ${allocation.fleet.numeroFrota}`), h("span", null, `${allocation.fleet.placa} · ${elapsed(allocation.createdAt)}`))) : h("p", null, "Nenhuma frota nesta área.")), isGestor() ? h(Button, { variant: "secondary", onClick: () => { setAdmin(selectedArea); setAdminForm({ patioId: selectedArea.patioId, nome: selectedArea.nome, capacidade: selectedArea.capacidade, ordem: selectedArea.ordem, x: selectedArea.x, y: selectedArea.y, cor: selectedArea.cor }); } }, "Editar área") : null) : h("div", { className: "operational-sheet__welcome" }, h("strong", null, "Selecione uma área"), h("span", null, "Consulte capacidade, ocupação e frotas."))
+          h("div", { className: "operational-sheet__actions" }, selectedAllocation ? h(Button, { onClick: () => focusArea(allAreas.find((area) => area.id === selectedAllocation.areaId) || selectedAllocation.area, true) }, "Ver no mapa") : null, selectedAllocation ? h(Button, { variant: "secondary", onClick: () => openAllocation("move") }, "Mover") : h(Button, { onClick: () => openAllocation("allocate") }, "Registrar área"), selectedAllocation ? h(Button, { variant: "ghost", disabled: saving, onClick: () => void release() }, "Liberar") : null, h(Button, { variant: "ghost", onClick: () => void showHistory() }, "Histórico"))
+        ) : selectedArea ? h("div", { className: "operational-sheet__content" }, h("div", { className: "operational-sheet__handle" }), h("p", { className: "card-label" }, selectedArea.patio?.nome || "ÁREA"), h("div", { className: "operational-fleet-title" }, h("h2", null, selectedArea.nome), h("button", { onClick: () => setSelectedArea(null) }, "×")), h("div", { className: "operational-capacity" }, h("div", null, h("strong", null, selectedArea.capacidade), h("span", null, "Capacidade")), h("div", null, h("strong", null, selectedArea.occupied), h("span", null, "Ocupadas")), h("div", null, h("strong", null, selectedArea.available), h("span", null, "Disponíveis"))), h("span", { className: `operational-state operational-state--${visualState(selectedArea).toLowerCase()}` }, stateLabel[visualState(selectedArea)]), h("div", { className: "operational-area-fleets" }, selectedArea.allocations?.length ? selectedArea.allocations.map((allocation) => h("button", { key: allocation.id, onClick: () => void selectFleet(allocation.fleet) }, h("strong", null, `Frota ${allocation.fleet.numeroFrota}`), h("span", null, `${allocation.fleet.placa} · ${elapsed(allocation.createdAt)}`))) : h("p", null, "Nenhuma frota nesta área.")), isGestor() ? h(Button, { variant: "secondary", onClick: () => { setAdmin(selectedArea); setAdminForm({ patioId: selectedArea.patioId, nome: selectedArea.nome, capacidade: selectedArea.capacidade, ordem: selectedArea.ordem, x: selectedArea.x, y: selectedArea.y, cor: selectedArea.cor }); } }, "Editar área") : null) : h("div", { className: "operational-sheet__welcome" }, h("strong", null, "Selecione uma área"), h("span", null, "Consulte capacidade, ocupação e frotas."))
       )
     ),
     ["allocate", "move"].includes(modal) ? h("div", { className: "modal-overlay", onClick: () => setModal(null) }, h("div", { className: "modal operational-modal", onClick: (event) => event.stopPropagation() }, h("h2", { className: "modal__title" }, modal === "allocate" ? "Registrar frota" : "Mover frota"), h("p", null, `Frota ${selectedFleet?.numeroFrota}`), h("label", { className: "input-field" }, h("span", { className: "input-field__label" }, "Filial"), h("select", { className: "input", disabled: true }, h("option", null, "Paulínia"))), h("label", { className: "input-field" }, h("span", { className: "input-field__label" }, "Pátio"), h("select", { className: "input", value: targetPatioId, onChange: (event) => { setTargetPatioId(event.target.value); setTargetAreaId(""); } }, h("option", { value: "" }, "Selecione"), dashboard?.patios.map((patio) => h("option", { key: patio.id, value: patio.id }, patio.nome)))), h("label", { className: "input-field" }, h("span", { className: "input-field__label" }, "Área"), h("select", { className: "input", value: targetAreaId, onChange: (event) => setTargetAreaId(event.target.value) }, h("option", { value: "" }, "Selecione"), targetAreas.map((area) => h("option", { key: area.id, value: area.id }, `${area.nome} · ${area.available} disponíveis`)))), h(Textarea, { label: "Observação (opcional)", maxLength: 500, value: note, onChange: (event) => setNote(event.target.value) }), h("div", { className: "modal__actions" }, h(Button, { variant: "ghost", onClick: () => setModal(null) }, "Cancelar"), h(Button, { disabled: saving || !targetAreaId, onClick: () => void submitAllocation() }, saving ? "Salvando..." : "Salvar")))) : null,
