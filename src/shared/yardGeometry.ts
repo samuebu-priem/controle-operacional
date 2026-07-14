@@ -7,6 +7,57 @@ import {
 export type PercentPoint = { xPercent: number; yPercent: number };
 export type MapTransform = { scale: number; x: number; y: number };
 export type PlacementResult = { valid: boolean; message: string | null; suggestedParentId: string | null };
+export type CanvasBounds = { width: number; height: number };
+export type SafeBoundingBox = { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number; centerX: number; centerY: number; valid: boolean };
+export const MIN_ELEMENT_WIDTH = 5;
+export const MIN_ELEMENT_HEIGHT = 5;
+const MAX_COORDINATE = 1_000_000;
+
+export function sanitizeCoordinate(value: unknown, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(-MAX_COORDINATE, Math.min(MAX_COORDINATE, numeric)) : fallback;
+}
+
+export function clampNumber(value: unknown, minimum: number, maximum: number) {
+  const safeMinimum = Number.isFinite(minimum) ? minimum : 0;
+  const safeMaximum = Number.isFinite(maximum) ? Math.max(safeMinimum, maximum) : safeMinimum;
+  return Math.max(safeMinimum, Math.min(safeMaximum, sanitizeCoordinate(value, safeMinimum)));
+}
+
+export function approximatelyEqual(first: number, second: number, epsilon = .0001) { return Math.abs(first - second) <= epsilon; }
+export function clampPointToBounds(point: MapPoint, bounds: CanvasBounds): MapPoint { return [clampNumber(point[0], 0, bounds.width), clampNumber(point[1], 0, bounds.height)]; }
+export function normalizeRotation(value: unknown) { const rotation = sanitizeCoordinate(value, 0) % 360; return rotation < 0 ? rotation + 360 : rotation; }
+
+export function isFiniteGeometry(geometry: YardMapElement["geometry"] | null | undefined) {
+  if (!geometry) return false;
+  if (geometry.kind === "point") return Number.isFinite(geometry.x) && Number.isFinite(geometry.y);
+  if (geometry.kind === "rect") return Number.isFinite(geometry.x) && Number.isFinite(geometry.y) && Number.isFinite(geometry.width) && Number.isFinite(geometry.height) && geometry.width > 0 && geometry.height > 0 && Number.isFinite(geometry.rotation ?? 0);
+  return Array.isArray(geometry.points) && geometry.points.length > 0 && geometry.points.every((point) => Array.isArray(point) && point.length === 2 && Number.isFinite(point[0]) && Number.isFinite(point[1])) && (geometry.kind !== "polyline" || Number.isFinite(geometry.width));
+}
+
+export function clampRectToBounds(rect: Extract<YardMapElement["geometry"], { kind: "rect" }>, bounds: CanvasBounds) {
+  let width = clampNumber(Math.abs(sanitizeCoordinate(rect.width, MIN_ELEMENT_WIDTH)), MIN_ELEMENT_WIDTH, Math.max(MIN_ELEMENT_WIDTH, bounds.width));
+  let height = clampNumber(Math.abs(sanitizeCoordinate(rect.height, MIN_ELEMENT_HEIGHT)), MIN_ELEMENT_HEIGHT, Math.max(MIN_ELEMENT_HEIGHT, bounds.height));
+  const rotation = normalizeRotation(rect.rotation ?? 0), radians = rotation * Math.PI / 180;
+  const rotatedWidth = () => Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+  const rotatedHeight = () => Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians));
+  const scale = Math.min(1, bounds.width / Math.max(MIN_ELEMENT_WIDTH, rotatedWidth()), bounds.height / Math.max(MIN_ELEMENT_HEIGHT, rotatedHeight()));
+  width = Math.max(MIN_ELEMENT_WIDTH, width * scale); height = Math.max(MIN_ELEMENT_HEIGHT, height * scale);
+  let x = sanitizeCoordinate(rect.x), y = sanitizeCoordinate(rect.y);
+  const centerX = x + width / 2, centerY = y + height / 2, halfRotatedWidth = rotatedWidth() / 2, halfRotatedHeight = rotatedHeight() / 2;
+  const clampedCenterX = clampNumber(centerX, halfRotatedWidth, Math.max(halfRotatedWidth, bounds.width - halfRotatedWidth));
+  const clampedCenterY = clampNumber(centerY, halfRotatedHeight, Math.max(halfRotatedHeight, bounds.height - halfRotatedHeight));
+  x += clampedCenterX - centerX; y += clampedCenterY - centerY;
+  return { kind: "rect" as const, x, y, width, height, rotation };
+}
+
+export function sanitizeGeometry(geometry: YardMapElement["geometry"], bounds: CanvasBounds = DEFAULT_VIEWBOX): YardMapElement["geometry"] {
+  if (geometry.kind === "point") { const [x, y] = clampPointToBounds([sanitizeCoordinate(geometry.x), sanitizeCoordinate(geometry.y)], bounds); return { kind: "point", x, y }; }
+  if (geometry.kind === "rect") return clampRectToBounds(geometry, bounds);
+  const points = (Array.isArray(geometry.points) ? geometry.points : []).map((point) => clampPointToBounds([sanitizeCoordinate(point?.[0]), sanitizeCoordinate(point?.[1])], bounds));
+  if (geometry.kind === "polyline") return { kind: "polyline", points, width: Math.max(1, sanitizeCoordinate(geometry.width, 1)) };
+  return { kind: "polygon", points };
+}
 
 export function percentToSvg(point: PercentPoint, viewBox: { width: number; height: number } = DEFAULT_VIEWBOX) {
   return { x: point.xPercent * viewBox.width, y: point.yPercent * viewBox.height };
@@ -54,10 +105,32 @@ export function geometryPoints(element: YardMapElement): MapPoint[] {
 }
 
 export function elementBounds(element: YardMapElement) {
+  return getSafeBoundingBox(element);
+}
+
+export function getSafeBoundingBox(element: YardMapElement): SafeBoundingBox {
+  if (!isFiniteGeometry(element.geometry)) return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0, centerX: 0, centerY: 0, valid: false };
   const points = geometryPoints(element);
+  if (!points.length || points.some((point) => !Number.isFinite(point[0]) || !Number.isFinite(point[1]))) return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0, centerX: 0, centerY: 0, valid: false };
   const xs = points.map((point) => point[0]), ys = points.map((point) => point[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2 };
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, valid: true };
+}
+
+export function clampTranslationToBounds(box: SafeBoundingBox, dx: number, dy: number, bounds: CanvasBounds) {
+  if (!box.valid) return { dx: 0, dy: 0 };
+  const safeDx = sanitizeCoordinate(dx), safeDy = sanitizeCoordinate(dy);
+  return {
+    dx: clampNumber(safeDx, -box.minX, bounds.width - box.maxX),
+    dy: clampNumber(safeDy, -box.minY, bounds.height - box.maxY)
+  };
+}
+
+export function combinedBoundingBox(elements: YardMapElement[]): SafeBoundingBox {
+  const boxes = elements.map(getSafeBoundingBox).filter((box) => box.valid);
+  if (!boxes.length) return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0, centerX: 0, centerY: 0, valid: false };
+  const minX = Math.min(...boxes.map((box) => box.minX)), minY = Math.min(...boxes.map((box) => box.minY)), maxX = Math.max(...boxes.map((box) => box.maxX)), maxY = Math.max(...boxes.map((box) => box.maxY));
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, valid: true };
 }
 
 function distanceToSegment(point: MapPoint, start: MapPoint, end: MapPoint) {
@@ -217,4 +290,9 @@ export function clampZoom(value: number, minimum = .5, maximum = 8) { return Mat
 export function zoomAtPoint(transform: MapTransform, nextScale: number, anchor: { x: number; y: number }): MapTransform { const scale = clampZoom(nextScale); return { scale, x: anchor.x - ((anchor.x - transform.x) / transform.scale) * scale, y: anchor.y - ((anchor.y - transform.y) / transform.scale) * scale }; }
 export function centerPointInViewport(args: { viewportWidth: number; viewportHeight: number; contentWidth: number; contentHeight: number; point: PercentPoint; scale: number }): MapTransform { return { scale: args.scale, x: args.viewportWidth / 2 - args.contentWidth * args.point.xPercent * args.scale, y: args.viewportHeight / 2 - args.contentHeight * args.point.yPercent * args.scale }; }
 export function projectPercentToViewport(point: PercentPoint, transform: MapTransform, contentSize: { width: number; height: number }) { return { x: transform.x + point.xPercent * contentSize.width * transform.scale, y: transform.y + point.yPercent * contentSize.height * transform.scale }; }
-export function snapPoint(point: MapPoint, gridSize: number, enabled: boolean): MapPoint { return enabled ? [Math.round(point[0] / gridSize) * gridSize, Math.round(point[1] / gridSize) * gridSize] : point; }
+export function snapPoint(point: MapPoint, gridSize: number, enabled: boolean, bounds?: CanvasBounds): MapPoint {
+  const safePoint: MapPoint = [sanitizeCoordinate(point[0]), sanitizeCoordinate(point[1])];
+  const safeGrid = Number.isFinite(gridSize) && gridSize > 0 ? gridSize : 0;
+  const snapped: MapPoint = enabled && safeGrid ? [Math.round(safePoint[0] / safeGrid) * safeGrid, Math.round(safePoint[1] / safeGrid) * safeGrid] : safePoint;
+  return bounds ? clampPointToBounds(snapped, bounds) : snapped;
+}

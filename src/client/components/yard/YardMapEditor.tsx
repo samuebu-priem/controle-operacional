@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { Component, useRef, useState } from "react";
 import {
-  canElementBeChildOf, elementBounds, elementContainsPoint, findContainingContainer, geometryPoints,
-  isElementInsideParent, snapPoint, validateAllElementPlacements, validateElementPlacement,
-  validateYardMapDocument, wouldCreateHierarchyCycle, zoomAtPoint
+  MIN_ELEMENT_HEIGHT, MIN_ELEMENT_WIDTH, approximatelyEqual, canElementBeChildOf, clampTranslationToBounds,
+  combinedBoundingBox, elementBounds, elementContainsPoint, findContainingContainer, geometryPoints,
+  isElementInsideParent, isFiniteGeometry, sanitizeCoordinate, sanitizeGeometry, snapPoint,
+  validateAllElementPlacements, validateElementPlacement, validateYardMapDocument, wouldCreateHierarchyCycle, zoomAtPoint
 } from "../../../shared/yardGeometry";
 import {
   CONTAINER_TYPES, ELEMENT_TYPE_LABELS, SLOT_TYPES, categoryForElementType, defaultElementProperties,
@@ -51,9 +52,9 @@ function createMapElement(type: YardElementType, points: MapPoint[]): YardMapEle
 }
 
 function translateElement(element: YardMapElement, dx: number, dy: number) {
-  const next = clone(element), geometry = next.geometry;
-  if (geometry.kind === "point" || geometry.kind === "rect") { geometry.x += dx; geometry.y += dy; }
-  else geometry.points = geometry.points.map(([x, y]) => [x + dx, y + dy]);
+  const next = clone(element), geometry = next.geometry, safeDx = sanitizeCoordinate(dx), safeDy = sanitizeCoordinate(dy);
+  if (geometry.kind === "point" || geometry.kind === "rect") { geometry.x += safeDx; geometry.y += safeDy; }
+  else geometry.points = geometry.points.map(([x, y]) => [x + safeDx, y + safeDy]);
   next.updatedAt = now(); return next;
 }
 function scaleElement(element: YardMapElement, factorX: number, factorY = factorX) {
@@ -80,6 +81,14 @@ function TreeNode({ element, elements, selectedIds, expanded, onToggle, onSelect
   </div>{children.length && open ? <ul>{children.map((child: YardMapElement) => <TreeNode key={child.id} {...{ element: child, elements, selectedIds, expanded, onToggle, onSelect, onRename, onVisibility, onLock, onDrop }} />)}</ul> : null}</li>;
 }
 
+class EditorRenderBoundary extends Component<{ children?: any; onRecover: () => void }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown, info: unknown) { console.error("Falha ao renderizar geometria do mapa", error, info); }
+  recover = () => { this.props.onRecover(); this.setState({ failed: false }); };
+  render() { return this.state.failed ? <div className="yard-editor-render-error"><strong>Não foi possível renderizar um elemento do mapa.</strong><span>A última alteração foi revertida.</span><button onClick={this.recover}>Recarregar editor</button></div> : this.props.children; }
+}
+
 export default function YardMapEditor({ mapName, initialDocument, saving = false, onSave, onUploadBackground, onClose }: Props) {
   const svgRef = useRef<any>(null), viewportRef = useRef<any>(null), dragRef = useRef<any>(null);
   const [document, setDocument] = useState<YardMapDocument>(validateYardMapDocument(clone(initialDocument)));
@@ -90,11 +99,24 @@ export default function YardMapEditor({ mapName, initialDocument, saving = false
   const [slotConfig, setSlotConfig] = useState<SlotConfig | null>(null), [slotPreview, setSlotPreview] = useState<YardMapElement[]>([]), [slotPreviewValid, setSlotPreviewValid] = useState(false);
   const [smartGuides, setSmartGuides] = useState<{ x?: number; y?: number }>({});
   const selected = selectedIds.length ? document.elements.find((element) => element.id === selectedIds[selectedIds.length - 1]) || null : null;
+  const lastValidDocumentRef = useRef<YardMapDocument>(clone(document));
 
-  function commit(next: YardMapDocument) { setPast((value) => [...value.slice(-49), clone(document)]); setDocument(validateYardMapDocument(next)); setFuture([]); }
+  function sanitizedDocument(next: YardMapDocument) { return { ...next, elements: next.elements.map((element) => ({ ...element, geometry: sanitizeGeometry(element.geometry, next.viewBox) })) }; }
+  function transformationIsValid(candidate: YardMapDocument, affectedIds?: Set<string>) {
+    const affected = affectedIds ? candidate.elements.filter((element) => affectedIds.has(element.id)) : candidate.elements;
+    if (affected.some((element) => { const box = elementBounds(element); return !isFiniteGeometry(element.geometry) || !box.valid || box.minX < 0 || box.minY < 0 || box.maxX > candidate.viewBox.width || box.maxY > candidate.viewBox.height; })) return false;
+    return !affected.some((element) => element.category !== "GENERIC" && !validateElementPlacement(element, candidate).valid);
+  }
+  function commit(next: YardMapDocument) {
+    const sanitized = sanitizedDocument(next);
+    if (!transformationIsValid(sanitized)) { setPlacementError("A alteração ultrapassa o canvas ou o container pai e foi rejeitada."); return false; }
+    let validated: YardMapDocument;
+    try { validated = validateYardMapDocument(sanitized); } catch (error) { setPlacementError(error instanceof Error ? error.message : "Geometria inválida."); return false; }
+    setPast((value) => [...value.slice(-49), clone(document)]); setDocument(validated); lastValidDocumentRef.current = clone(validated); setFuture([]); return true;
+  }
   function patchElements(updater: (elements: YardMapElement[]) => YardMapElement[]) { commit({ ...document, elements: updater(document.elements) }); }
   function isLocked(element: YardMapElement) { return element.locked || Boolean(document.layers.find((layer) => layer.id === element.layerId)?.locked); }
-  function pointFromEvent(event: any): MapPoint { const rect = svgRef.current.getBoundingClientRect(); return snapPoint([(event.clientX - rect.left) / rect.width * document.viewBox.width, (event.clientY - rect.top) / rect.height * document.viewBox.height], document.settings.gridSize, document.settings.snapEnabled); }
+  function pointFromEvent(event: any): MapPoint { const rect = svgRef.current?.getBoundingClientRect?.(); if (!rect) return [0, 0]; const width = Math.max(1, sanitizeCoordinate(rect.width, 1)), height = Math.max(1, sanitizeCoordinate(rect.height, 1)); return snapPoint([(sanitizeCoordinate(event.clientX) - rect.left) / width * document.viewBox.width, (sanitizeCoordinate(event.clientY) - rect.top) / height * document.viewBox.height], document.settings.gridSize, document.settings.snapEnabled, document.viewBox); }
   function chooseParent(element: YardMapElement) {
     const explicit = selected?.category === "CONTAINER" && canElementBeChildOf(element, selected) && isElementInsideParent(element, selected) ? selected : null;
     return explicit || findContainingContainer(element, { ...document, elements: [...document.elements, element] });
@@ -154,17 +176,41 @@ export default function YardMapEditor({ mapName, initialDocument, saving = false
     }
     return { dx: dx + adjustX, dy: dy + adjustY, guides: { x: guideX, y: guideY } };
   }
+  function transformedDocument(before: YardMapDocument, ids: Set<string>, transformer: (item: YardMapElement) => YardMapElement) { return { ...before, elements: before.elements.map((item) => ids.has(item.id) ? transformer(item) : item) }; }
+  function constrainTransformation(before: YardMapDocument, ids: Set<string>, transformerAtRatio: (item: YardMapElement, ratio: number) => YardMapElement) {
+    const full = transformedDocument(before, ids, (item) => transformerAtRatio(item, 1));
+    if (transformationIsValid(full, ids)) return { document: full, ratio: 1 };
+    let lower = 0, upper = 1, best = before;
+    for (let iteration = 0; iteration < 18; iteration++) {
+      const ratio = (lower + upper) / 2, candidate = transformedDocument(before, ids, (item) => transformerAtRatio(item, ratio));
+      if (transformationIsValid(candidate, ids)) { lower = ratio; best = candidate; } else upper = ratio;
+    }
+    return { document: best, ratio: lower };
+  }
   function pointerMove(event: any) {
     const drag = dragRef.current; if (!drag) return;
     if (drag.kind === "pan") { setTransform({ ...drag.transform, x: drag.transform.x + event.clientX - drag.x, y: drag.transform.y + event.clientY - drag.y }); return; }
-    const rect = svgRef.current.getBoundingClientRect(), rawDx = (event.clientX - drag.x) / rect.width * document.viewBox.width, rawDy = (event.clientY - drag.y) / rect.height * document.viewBox.height;
-    if (drag.kind === "move") { const snapped = smartDelta(drag.element, rawDx, rawDy, drag.ids); setSmartGuides(snapped.guides); setDocument((current) => ({ ...current, elements: drag.before.elements.map((item: YardMapElement) => drag.ids.has(item.id) ? translateElement(item, snapped.dx, snapped.dy) : item) })); }
-    if (drag.kind === "resize") { const factor = Math.max(.1, 1 + (rawDx + rawDy) / 300); setDocument((current) => ({ ...current, elements: drag.before.elements.map((item: YardMapElement) => drag.ids.has(item.id) ? scaleElement(item, factor) : item) })); }
-    if (drag.kind === "rotate") { const degrees = rawDx / 2; setDocument((current) => ({ ...current, elements: drag.before.elements.map((item: YardMapElement) => drag.ids.has(item.id) ? rotateElement(item, degrees) : item) })); }
+    const rect = svgRef.current?.getBoundingClientRect?.(); if (!rect) return; const width = Math.max(1, sanitizeCoordinate(rect.width, 1)), height = Math.max(1, sanitizeCoordinate(rect.height, 1)), rawDx = (sanitizeCoordinate(event.clientX) - drag.x) / width * document.viewBox.width, rawDy = (sanitizeCoordinate(event.clientY) - drag.y) / height * document.viewBox.height;
+    if (drag.kind === "move") {
+      const snapped = smartDelta(drag.element, rawDx, rawDy, drag.ids), movingElements = drag.before.elements.filter((item: YardMapElement) => drag.ids.has(item.id)), canvasDelta = clampTranslationToBounds(combinedBoundingBox(movingElements), snapped.dx, snapped.dy, document.viewBox);
+      const constrained = constrainTransformation(drag.before, drag.ids, (item, ratio) => translateElement(item, canvasDelta.dx * ratio, canvasDelta.dy * ratio));
+      if (approximatelyEqual(drag.lastRatio ?? -1, constrained.ratio) && approximatelyEqual(drag.lastDx ?? Number.NaN, canvasDelta.dx) && approximatelyEqual(drag.lastDy ?? Number.NaN, canvasDelta.dy)) return;
+      drag.lastRatio = constrained.ratio; drag.lastDx = canvasDelta.dx; drag.lastDy = canvasDelta.dy; setSmartGuides(constrained.ratio === 1 ? snapped.guides : {}); setDocument(constrained.document);
+    }
+    if (drag.kind === "resize") {
+      const moving = drag.before.elements.filter((item: YardMapElement) => drag.ids.has(item.id)), minimumFactor = Math.max(.01, ...moving.map((item: YardMapElement) => { const box = elementBounds(item); return Math.max(box.width ? MIN_ELEMENT_WIDTH / box.width : 1, box.height ? MIN_ELEMENT_HEIGHT / box.height : 1); })), factor = Math.max(minimumFactor, sanitizeCoordinate(1 + (rawDx + rawDy) / 300, 1));
+      const constrained = constrainTransformation(drag.before, drag.ids, (item, ratio) => scaleElement(item, 1 + (factor - 1) * ratio)); if (approximatelyEqual(drag.lastFactor ?? -1, factor) && approximatelyEqual(drag.lastRatio ?? -1, constrained.ratio)) return; drag.lastFactor = factor; drag.lastRatio = constrained.ratio; setDocument(constrained.document);
+    }
+    if (drag.kind === "rotate") {
+      const degrees = sanitizeCoordinate(rawDx / 2); const constrained = constrainTransformation(drag.before, drag.ids, (item, ratio) => rotateElement(item, degrees * ratio)); if (approximatelyEqual(drag.lastDegrees ?? Number.NaN, degrees) && approximatelyEqual(drag.lastRatio ?? -1, constrained.ratio)) return; drag.lastDegrees = degrees; drag.lastRatio = constrained.ratio; setDocument(constrained.document);
+    }
   }
   function pointerUp() {
     const drag = dragRef.current;
-    if (drag && ["move", "resize", "rotate", "vertex"].includes(drag.kind)) { setPast((value) => [...value.slice(-49), drag.before]); setFuture([]); const invalid = validateAllElementPlacements(document).filter((item) => item.element.category !== "GENERIC"); setPlacementError(invalid[0]?.result.message || ""); }
+    if (drag && ["move", "resize", "rotate", "vertex"].includes(drag.kind)) {
+      if (!transformationIsValid(document, drag.ids || new Set([drag.element.id]))) { setDocument(drag.before); setPlacementError("A transformação inválida foi revertida."); }
+      else { const changed = JSON.stringify(drag.before.elements) !== JSON.stringify(document.elements); if (changed) { setPast((value) => [...value.slice(-49), drag.before]); setFuture([]); lastValidDocumentRef.current = clone(document); } setPlacementError(""); }
+    }
     dragRef.current = null; setSmartGuides({});
   }
   function vertexDown(element: YardMapElement, index: number, event: any) { event.stopPropagation(); if (isLocked(element)) return; dragRef.current = { kind: "vertex", x: event.clientX, y: event.clientY, element, index, before: clone(document) }; }
@@ -181,8 +227,9 @@ export default function YardMapEditor({ mapName, initialDocument, saving = false
     if (!selectedIds.length) return; const sourceIds = new Set(selectedIds);
     for (const selectedId of selectedIds) { const item = document.elements.find((value) => value.id === selectedId); if (item?.groupId) document.elements.filter((value) => value.groupId === item.groupId).forEach((value) => sourceIds.add(value.id)); descendants(selectedId, document.elements).forEach((value) => sourceIds.add(value)); }
     const idMap = new Map<string, string>(), groupMap = new Map<string, string>(); sourceIds.forEach((value) => idMap.set(value, id()));
-    const copies = document.elements.filter((item) => sourceIds.has(item.id)).map((item) => { if (item.groupId && !groupMap.has(item.groupId)) groupMap.set(item.groupId, id("group")); const copy = translateElement(clone(item), 30, 30); return { ...copy, id: idMap.get(item.id)!, parentId: item.parentId && idMap.has(item.parentId) ? idMap.get(item.parentId)! : item.parentId, groupId: item.groupId ? groupMap.get(item.groupId)! : null, name: `${item.name} cópia`, zIndex: item.zIndex + 1, createdAt: now(), updatedAt: now() }; });
-    commit({ ...document, elements: [...document.elements, ...copies] }); setSelectedIds(copies.filter((item) => selectedIds.some((value) => idMap.get(value) === item.id)).map((item) => item.id));
+    const baseCopies = document.elements.filter((item) => sourceIds.has(item.id)).map((item) => { if (item.groupId && !groupMap.has(item.groupId)) groupMap.set(item.groupId, id("group")); return { ...clone(item), id: idMap.get(item.id)!, parentId: item.parentId && idMap.has(item.parentId) ? idMap.get(item.parentId)! : item.parentId, groupId: item.groupId ? groupMap.get(item.groupId)! : null, name: `${item.name} cópia`, zIndex: item.zIndex + 1, createdAt: now(), updatedAt: now() }; });
+    const copyIds = new Set(baseCopies.map((item) => item.id)), baseDocument = { ...document, elements: [...document.elements, ...baseCopies] }, desired = clampTranslationToBounds(combinedBoundingBox(baseCopies), 30, 30, document.viewBox), constrained = constrainTransformation(baseDocument, copyIds, (item, ratio) => translateElement(item, desired.dx * ratio, desired.dy * ratio)), copies = constrained.document.elements.filter((item) => copyIds.has(item.id));
+    if (commit(constrained.document)) setSelectedIds(copies.filter((item) => selectedIds.some((value) => idMap.get(value) === item.id)).map((item) => item.id));
   }
   function reparent(elementId: string, parentId: string | null) {
     const element = document.elements.find((item) => item.id === elementId), parent = parentId ? document.elements.find((item) => item.id === parentId) || null : null; if (!element) return;
@@ -228,7 +275,7 @@ export default function YardMapEditor({ mapName, initialDocument, saving = false
       <button onClick={exportJson}>Exportar</button><label>Importar<input type="file" accept="application/json" onChange={(event: any) => importJson(event.target.files?.[0])} /></label><button className="primary" onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar mapa"}</button><button onClick={onClose}>Fechar</button>
     </div></header>
     <aside className="yard-editor__tools">{toolGroups.map((group) => <div className="yard-editor__tool-group" key={group.name}><h3>{group.name}</h3>{group.tools.map((item) => <button key={item.type} className={tool === item.type ? "active" : ""} onClick={() => { setTool(item.type); setDraftPoints([]); }}><i>{item.icon}</i><span>{item.label}</span></button>)}</div>)}<div className="yard-editor__tool-actions"><button onClick={openSlotGenerator}>Gerar vagas</button><button onClick={renumberGroup} disabled={!selected?.groupId}>Renumerar grupo</button></div></aside>
-    <main className={`yard-editor__canvas yard-editor__canvas--${tool.toLowerCase()}`} ref={viewportRef} onPointerMove={canvasPointerMove} onPointerUp={pointerUp} onPointerLeave={pointerUp} onWheel={(event: any) => { event.preventDefault(); const rect = viewportRef.current.getBoundingClientRect(); setTransform((current) => zoomAtPoint(current, current.scale + (event.deltaY < 0 ? .2 : -.2), { x: event.clientX - rect.left, y: event.clientY - rect.top })); }}>
+    <EditorRenderBoundary onRecover={() => { setDocument(clone(lastValidDocumentRef.current)); dragRef.current = null; setPlacementError("A última alteração foi revertida."); }}><main className={`yard-editor__canvas yard-editor__canvas--${tool.toLowerCase()}`} ref={viewportRef} onPointerMove={canvasPointerMove} onPointerUp={pointerUp} onPointerLeave={pointerUp} onWheel={(event: any) => { event.preventDefault(); const rect = viewportRef.current.getBoundingClientRect(); setTransform((current) => zoomAtPoint(current, current.scale + (event.deltaY < 0 ? .2 : -.2), { x: event.clientX - rect.left, y: event.clientY - rect.top })); }}>
       <div className="yard-editor__transform" style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }} onPointerDown={canvasDown} onDoubleClick={() => finishDrawing()}>
         <YardVectorMap document={document} svgRef={svgRef} editor selectedIds={selectedIds} draftPoints={draftPoints} previewElements={slotPreview} onElementSelect={elementDown} />
         {tool === "EDIT_POINTS" && selected && (selected.geometry.kind === "polygon" || selected.geometry.kind === "polyline") ? <svg className="yard-editor-vertices" viewBox={`0 0 ${document.viewBox.width} ${document.viewBox.height}`}>{geometryPoints(selected).map((point, index) => <circle key={index} cx={point[0]} cy={point[1]} r="9" onPointerDown={(event: any) => vertexDown(selected, index, event)} />)}</svg> : null}
@@ -238,7 +285,7 @@ export default function YardMapEditor({ mapName, initialDocument, saving = false
       {placementError ? <div className="yard-editor__validation" role="alert">⚠ {placementError}</div> : null}
       {overlapCandidates.length > 1 ? <div className="yard-editor-overlap"><strong>Selecionar sob o cursor</strong>{overlapCandidates.map((item) => <button key={item.id} onClick={() => { setSelectedIds([item.id]); setOverlapCandidates([]); }}>{item.name}<small>z {item.zIndex}</small></button>)}<small>Alt+clique alterna entre objetos.</small></div> : null}
       <div className="yard-editor__zoom"><button onClick={() => setTransform((current) => ({ ...current, scale: Math.max(.5, current.scale - .2) }))}>−</button><span>{Math.round(transform.scale * 100)}%</span><button onClick={() => setTransform((current) => ({ ...current, scale: Math.min(8, current.scale + .2) }))}>+</button><button onClick={() => setTransform({ scale: 1, x: 0, y: 0 })}>Reset</button></div>
-    </main>
+    </main></EditorRenderBoundary>
     <aside className="yard-editor__properties">
       <section className="yard-editor__tree"><h3>Estrutura do mapa</h3><p className="helper">Arraste um item sobre um container para reatribuir o pai.</p><ul>{roots.map((root) => <TreeNode key={root.id} element={root} elements={document.elements} selectedIds={selectedIds} expanded={expanded} onToggle={(value: string) => setExpanded((current) => { const next = new Set(current); next.has(value) ? next.delete(value) : next.add(value); return next; })} onSelect={(value: string, multiple: boolean) => setSelectedIds((current) => multiple ? (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]) : [value])} onRename={(element: YardMapElement) => { const name = window.prompt("Novo nome", element.name); if (name?.trim()) updateSelectedById(element.id, (item) => ({ ...item, name: name.trim(), updatedAt: now() })); }} onVisibility={(element: YardMapElement) => updateSelectedById(element.id, (item) => ({ ...item, visible: !item.visible }))} onLock={(element: YardMapElement) => updateSelectedById(element.id, (item) => ({ ...item, locked: !item.locked }))} onDrop={reparent} />)}</ul></section>
       <section><h3>Camadas</h3>{[...document.layers].sort((a,b) => b.order-a.order).map((layer) => <div className="yard-editor-layer" key={layer.id}><span>{layer.name}</span><button onClick={() => toggleLayer(layer.id, "visible")}>{layer.visible ? "👁" : "—"}</button><button onClick={() => toggleLayer(layer.id, "locked")}>{layer.locked ? "🔒" : "🔓"}</button></div>)}</section>
