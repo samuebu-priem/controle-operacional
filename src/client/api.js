@@ -167,7 +167,27 @@ export async function getOperationalYardMap(branch = "PAULINIA") {
 }
 
 export async function getYardFleetLocation(fleetId) {
-    return request(`/api/yard/fleets/${encodeURIComponent(fleetId)}`);
+    return request(`/api/yard/fleets/${encodeURIComponent(fleetId)}/location?branch=PAULINIA`);
+}
+
+export async function getYardArea(areaId, filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.search) params.set("search", filters.search);
+    if (filters.page) params.set("page", String(filters.page));
+    if (filters.limit) params.set("limit", String(filters.limit));
+    return request(`/api/yard/areas/${encodeURIComponent(areaId)}?${params.toString()}`);
+}
+
+export async function allocateYardFleetToArea(areaId, payload) {
+    return request(`/api/yard/areas/${encodeURIComponent(areaId)}/allocations`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function previewYardBulkAllocation(areaId, identifiers) {
+    return request(`/api/yard/areas/${encodeURIComponent(areaId)}/bulk-preview`, { method: "POST", body: JSON.stringify({ identifiers }) });
+}
+
+export async function bulkAllocateYardArea(areaId, payload) {
+    return request(`/api/yard/areas/${encodeURIComponent(areaId)}/bulk-allocate`, { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function getYardHistory(fleetId, filters = {}) {

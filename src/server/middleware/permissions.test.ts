@@ -9,15 +9,21 @@ test("permissões de pátio falham fechadas sem role válida", () => {
 
 test("INSPETOR opera frotas, mas não administra áreas", () => {
   assert.equal(hasPermission("INSPETOR", "yard:view"), true);
-  assert.equal(hasPermission("INSPETOR", "yard:update"), true);
-  assert.equal(hasPermission("INSPETOR", "yard:history"), true);
-  assert.equal(hasPermission("INSPETOR", "yard:areas-manage"), false);
+  assert.equal(hasPermission("INSPETOR", "yard:allocate"), true);
+  assert.equal(hasPermission("INSPETOR", "yard:bulk-allocate"), true);
+  assert.equal(hasPermission("INSPETOR", "yard:move"), true);
+  assert.equal(hasPermission("INSPETOR", "yard:release"), true);
+  assert.equal(hasPermission("INSPETOR", "yard:history:view"), true);
+  assert.equal(hasPermission("INSPETOR", "yard:areas:manage"), false);
 });
 
 test("GESTOR possui todas as capacidades do pátio", () => {
   assert.equal(hasPermission("GESTOR", "yard:view"), true);
   assert.equal(hasPermission("GESTOR", "yard:search"), true);
-  assert.equal(hasPermission("GESTOR", "yard:update"), true);
-  assert.equal(hasPermission("GESTOR", "yard:history"), true);
-  assert.equal(hasPermission("GESTOR", "yard:areas-manage"), true);
+  assert.equal(hasPermission("GESTOR", "yard:allocate"), true);
+  assert.equal(hasPermission("GESTOR", "yard:bulk-allocate"), true);
+  assert.equal(hasPermission("GESTOR", "yard:move"), true);
+  assert.equal(hasPermission("GESTOR", "yard:release"), true);
+  assert.equal(hasPermission("GESTOR", "yard:history:view"), true);
+  assert.equal(hasPermission("GESTOR", "yard:areas:manage"), true);
 });

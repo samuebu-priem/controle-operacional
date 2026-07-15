@@ -78,9 +78,14 @@ model PatioAllocation {
   id             String    @id @default(cuid())
   fleetId        String
   areaId         String
+  branch         String
+  origin         PatioAllocationOrigin @default(MANUAL_ALLOCATION)
+  releaseOrigin  PatioAllocationOrigin?
   registeredById String
   releasedById   String?
+  registeredAt   DateTime  @default(now())
   createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   releasedAt     DateTime?
   note           String?
   releaseNote    String?
@@ -90,9 +95,17 @@ model PatioAllocation {
   releasedBy     User?     @relation("PatioAllocationReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
 
   @@index([areaId, releasedAt, createdAt])
-  @@index([fleetId, releasedAt, createdAt])
+  @@index([fleetId, branch, releasedAt, createdAt])
+  @@index([branch, updatedAt])
   @@index([registeredById])
   @@index([releasedById])
+}
+
+enum PatioAllocationOrigin {
+  INITIAL_INVENTORY
+  MANUAL_ALLOCATION
+  MANUAL_MOVE
+  MANUAL_RELEASE
 }
 
 model Collaborator {

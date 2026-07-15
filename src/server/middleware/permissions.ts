@@ -5,13 +5,16 @@ export type UserRole = "INSPETOR" | "GESTOR";
 export type Permission =
   | "yard:view"
   | "yard:search"
-  | "yard:update"
-  | "yard:history"
-  | "yard:areas-manage";
+  | "yard:areas:manage"
+  | "yard:allocate"
+  | "yard:bulk-allocate"
+  | "yard:move"
+  | "yard:release"
+  | "yard:history:view";
 
 const rolePermissions: Record<UserRole, ReadonlySet<Permission>> = {
-  INSPETOR: new Set(["yard:view", "yard:search", "yard:update", "yard:history"]),
-  GESTOR: new Set(["yard:view", "yard:search", "yard:update", "yard:history", "yard:areas-manage"])
+  INSPETOR: new Set(["yard:view", "yard:search", "yard:allocate", "yard:bulk-allocate", "yard:move", "yard:release", "yard:history:view"]),
+  GESTOR: new Set(["yard:view", "yard:search", "yard:areas:manage", "yard:allocate", "yard:bulk-allocate", "yard:move", "yard:release", "yard:history:view"])
 };
 
 export function normalizeUserRole(value?: string | null): UserRole {
