@@ -116,7 +116,13 @@ async function saveProduct(input: any, userId: string, source: string) {
   return prisma.$transaction(async (tx: any) => {
     const family = await upsertNamed(tx, "productFamily", clean(input.familyName));
     const manufacturer = await upsertNamed(tx, "manufacturer", clean(input.manufacturerName));
-    const current = await tx.product.findFirst({ where: { OR: [...(input.id ? [{ id: input.id }] : []), { normalizedName }, ...(input.internalCode ? [{ internalCode: input.internalCode }] : [])] }, include: { aliases: true } });
+    const current = input.id
+      ? await tx.product.findUnique({ where: { id: input.id }, include: { aliases: true } })
+      : await tx.product.findFirst({ where: { OR: [{ normalizedName }, ...(input.internalCode ? [{ internalCode: input.internalCode }] : [])] }, include: { aliases: true } });
+    if (input.id) {
+      const duplicate = await tx.product.findFirst({ where: { normalizedName, NOT: { id: input.id } }, select: { id: true } });
+      if (duplicate) throw new AppError("Já existe outro produto cadastrado com esse nome.", 409, "DUPLICATE_PRODUCT_NAME");
+    }
     const isManualSource = source === "MANUAL" || source === "BULK_MANUAL" || source === "IMPORT_OVERRIDE";
     const hasProcedureInput = input.washingProcedure !== undefined;
     let procedure = hasProcedureInput ? parseWashingProcedure(input.washingProcedure) : current?.washingProcedure ?? "NOT_DEFINED";
