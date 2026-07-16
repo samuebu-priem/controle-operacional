@@ -134,7 +134,7 @@ export default function FrotaHistoricoPage() {
                       _jsxs("div", {
                         className: "history-item__top",
                         children: [
-                          _jsxs("div", { children: [_jsx("h3", { className: "section-title", children: formatDate(inspecao.dataInspecao) }), _jsxs("p", { className: "helper", children: [inspecao.pontosCriticos.length, " pontos criticos"] })] }),
+                          _jsxs("div", { children: [_jsx("h3", { className: "section-title", children: formatDate(inspecao.dataInspecao) }), _jsx("p", { className: "product-loaded", children: `Última carga: ${inspecao.product?.name ?? "Registro legado"}` }), _jsxs("p", { className: "helper", children: ["Inspetor: ", inspecao.nomeInspetor, " · Lavador: ", inspecao.colaborador?.nome ?? "Não aplicável", " · ", inspecao.pontosCriticos.length, " pontos críticos"] })] }),
                           _jsx("span", { className: `status ${inspecao.status === "REPROVADO" ? "status--danger" : "status--success"}`, children: formatStatus(inspecao.status) })
                         ]
                       }),

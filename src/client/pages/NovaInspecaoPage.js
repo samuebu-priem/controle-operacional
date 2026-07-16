@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createInspecao, getFrotaByNumero, listCollaborators, searchFrotas, uploadFotos } from "../api";
+import { autocompleteProducts, createInspecao, getFrotaByNumero, listCollaborators, searchFrotas, uploadFotos } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import CriticalPointForm from "../components/inspecao/CriticalPointForm";
@@ -78,6 +78,15 @@ export default function NovaInspecaoPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [productQuery, setProductQuery] = useState("");
+  const [productOptions, setProductOptions] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  useEffect(() => {
+    if (productQuery.trim().length < 2 || selectedProduct?.name === productQuery) { setProductOptions([]); return; }
+    const timer = window.setTimeout(() => { autocompleteProducts(productQuery).then((r) => setProductOptions(r.products)).catch(() => setProductOptions([])); }, 220);
+    return () => window.clearTimeout(timer);
+  }, [productQuery, selectedProduct]);
 
   useEffect(() => {
     setValues((current) => ({ ...current, nomeInspetor: inspectorName }));
@@ -207,6 +216,7 @@ export default function NovaInspecaoPage() {
       const checklistPontos = checklistToCriticalPoints(checklist);
       const pontosParaSalvar = [...checklistPontos, ...pontosCriticos];
       const isPosLavagem = values.tipoInspecao === "APOS_LAVAGEM";
+      if (!selectedProduct) { setError("Selecione a última carga no catálogo de produtos."); return; }
 
       if (isPosLavagem && (!values.colaboradorId || !values.resultadoPosLavagem)) {
         throw new Error("Informe colaborador e resultado para inspeção pós-lavagem.");
@@ -218,6 +228,7 @@ export default function NovaInspecaoPage() {
 
       const observacoesComChecklist = [values.observacoesGerais.trim(), buildChecklistObservacao(checklist)].filter(Boolean).join("\n\n");
       const response = await createInspecao({
+        productId: selectedProduct.id,
         frotaId: frotaEncontrada?.id ?? values.numeroFrota,
         numeroFrota: values.numeroFrota,
         placa: values.placa,
@@ -266,6 +277,7 @@ export default function NovaInspecaoPage() {
         _jsx(AppHeader, { title: "Nova inspecao", subtitle: "Crie a inspecao, inclua checklist, pontos criticos, fotos e videos.", showBack: true }),
         error ? _jsx("p", { className: "notice notice--error", children: error }) : null,
         success ? _jsx("p", { className: "notice notice--success", children: success }) : null,
+        _jsxs("section", { className: "section-card product-selector", children: [_jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Carga transportada" }), _jsx("h2", { className: "section-title", children: "Última carga" }), _jsx("p", { className: "helper", children: "Selecione um produto cadastrado. Texto livre não é aceito." })] }), _jsx("input", { className: "input", value: productQuery, placeholder: "Digite nome, ONU, sinônimo ou nome químico...", onChange: (e) => { setProductQuery(e.target.value); if (e.target.value !== selectedProduct?.name) setSelectedProduct(null); } }), productOptions.length ? _jsx("div", { className: "product-suggestions", children: productOptions.map((product) => _jsxs("button", { type: "button", onClick: () => { setSelectedProduct(product); setProductQuery(product.name); setProductOptions([]); }, children: [_jsxs("strong", { children: [product.name, product.unNumber ? ` · ONU ${product.unNumber}` : ""] }), _jsxs("span", { children: [product.family?.name || "Sem família", " · ", product.manufacturer?.name || "Fabricante não informado"] })] }, product.id)) }) : null, selectedProduct ? _jsxs("div", { className: "selected-product", children: [_jsxs("div", { children: [_jsx("strong", { children: selectedProduct.name }), _jsx("span", { children: selectedProduct.family?.name || "Família não informada" })] }), _jsx("span", { className: `product-risk product-risk--${selectedProduct.riskLevel.toLowerCase()}`, children: `Risco ${selectedProduct.riskLevel === "HIGH" ? "alto" : selectedProduct.riskLevel === "MEDIUM" ? "médio" : "baixo"}` }), _jsx("span", { children: selectedProduct.requiresSteam ? "Necessita vapor" : "Vapor não padrão" }), _jsx("span", { children: `Lavagem ${selectedProduct.washDifficulty === "HIGH" ? "difícil" : selectedProduct.washDifficulty === "MEDIUM" ? "média" : "simples"}` })] }) : null] }),
         _jsx(InspectionForm, {
           values,
           onChange: handleChange,

@@ -8,34 +8,36 @@ datasource db {
 }
 
 model User {
-  id                  String                @id @default(cuid())
-  name                String
-  fullName            String?
-  jobTitle            String?
-  email               String                @unique
-  password            String
-  role                String                @default("INSPETOR")
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  inspecoes           Inspecao[]
+  id                         String            @id @default(cuid())
+  name                       String
+  fullName                   String?
+  jobTitle                   String?
+  email                      String            @unique
+  password                   String
+  role                       String            @default("INSPETOR")
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  inspecoes                  Inspecao[]
   patioAllocationsRegistered PatioAllocation[] @relation("PatioAllocationRegisteredBy")
   patioAllocationsReleased   PatioAllocation[] @relation("PatioAllocationReleasedBy")
+  productHistory             ProductHistory[]
+  productDocuments           ProductDocument[]
 
   @@index([role])
 }
 
 model Frota {
-  id                  String                @id @default(cuid())
-  numeroFrota         String                @unique
-  placa               String
-  tipoEquipamento     String
-  material            String
-  capacidade          String
-  observacoesFixas    String?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  inspecoes           Inspecao[]
-  patioAllocations    PatioAllocation[]
+  id               String            @id @default(cuid())
+  numeroFrota      String            @unique
+  placa            String
+  tipoEquipamento  String
+  material         String
+  capacidade       String
+  observacoesFixas String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  inspecoes        Inspecao[]
+  patioAllocations PatioAllocation[]
 
   @@index([numeroFrota])
   @@index([placa])
@@ -56,18 +58,18 @@ model Patio {
 }
 
 model PatioArea {
-  id          String             @id @default(cuid())
+  id          String            @id @default(cuid())
   patioId     String
   nome        String
-  capacidade Int
-  ordem       Int                @default(0)
+  capacidade  Int
+  ordem       Int               @default(0)
   x           Float
   y           Float
-  cor         String             @default("#22c55e")
-  ativo       Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  patio       Patio              @relation(fields: [patioId], references: [id], onDelete: Cascade)
+  cor         String            @default("#22c55e")
+  ativo       Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  patio       Patio             @relation(fields: [patioId], references: [id], onDelete: Cascade)
   allocations PatioAllocation[]
 
   @@unique([patioId, nome])
@@ -75,24 +77,24 @@ model PatioArea {
 }
 
 model PatioAllocation {
-  id             String    @id @default(cuid())
+  id             String                 @id @default(cuid())
   fleetId        String
   areaId         String
   branch         String
-  origin         PatioAllocationOrigin @default(MANUAL_ALLOCATION)
+  origin         PatioAllocationOrigin  @default(MANUAL_ALLOCATION)
   releaseOrigin  PatioAllocationOrigin?
   registeredById String
   releasedById   String?
-  registeredAt   DateTime  @default(now())
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  registeredAt   DateTime               @default(now())
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
   releasedAt     DateTime?
   note           String?
   releaseNote    String?
-  fleet          Frota     @relation(fields: [fleetId], references: [id], onDelete: Restrict)
-  area           PatioArea @relation(fields: [areaId], references: [id], onDelete: Restrict)
-  registeredBy   User      @relation("PatioAllocationRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
-  releasedBy     User?     @relation("PatioAllocationReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+  fleet          Frota                  @relation(fields: [fleetId], references: [id], onDelete: Restrict)
+  area           PatioArea              @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  registeredBy   User                   @relation("PatioAllocationRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+  releasedBy     User?                  @relation("PatioAllocationReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
 
   @@index([areaId, releasedAt, createdAt])
   @@index([fleetId, branch, releasedAt, createdAt])
@@ -121,7 +123,7 @@ model Collaborator {
 }
 
 model Inspecao {
-  id                    String                 @id @default(cuid())
+  id                    String                    @id @default(cuid())
   frotaId               String
   userId                String?
   colaboradorId         String?
@@ -132,13 +134,14 @@ model Inspecao {
   motivoNaoConformidade MotivoNaoConformidade?
   observacoesGerais     String?
   nomeInspetor          String
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
   fotos                 FotoInspecao[]
-  colaborador           Collaborator?          @relation(fields: [colaboradorId], references: [id])
-  frota                 Frota                  @relation(fields: [frotaId], references: [id], onDelete: Cascade)
-  user                  User?                  @relation(fields: [userId], references: [id])
+  colaborador           Collaborator?             @relation(fields: [colaboradorId], references: [id])
+  frota                 Frota                     @relation(fields: [frotaId], references: [id], onDelete: Cascade)
+  user                  User?                     @relation(fields: [userId], references: [id])
   pontosCriticos        PontoCritico[]
+  productInspection     ProductInspectionHistory?
 
   @@index([frotaId, dataInspecao])
   @@index([colaboradorId, dataInspecao])
@@ -146,6 +149,145 @@ model Inspecao {
   @@index([status])
   @@index([resultadoPosLavagem])
   @@index([motivoNaoConformidade])
+}
+
+model ProductFamily {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+
+  @@index([name])
+}
+
+model Manufacturer {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+
+  @@index([name])
+}
+
+model Product {
+  id                          String                     @id @default(cuid())
+  name                        String
+  normalizedName              String                     @unique
+  chemicalName                String?
+  internalCode                String?                    @unique
+  unNumber                    String?
+  manufacturerId              String?
+  familyId                    String?
+  physicalState               String?
+  color                       String?
+  odor                        String?
+  polarity                    String?
+  solubility                  String?
+  flammability                String?
+  corrosivity                 String?
+  toxicity                    String?
+  riskClass                   String?
+  riskLevel                   ProductRiskLevel           @default(LOW)
+  requiresSteam               Boolean                    @default(false)
+  washType                    String?
+  recommendedCleaningProducts String?
+  washDifficulty              ProductWashDifficulty      @default(LOW)
+  averageWashMinutes          Int?
+  criticalPoints              String?
+  residueHidePoints           String?
+  mainRejectionCauses         String?
+  approvalCriteria            String?
+  notes                       String?
+  manualVersion               String?
+  active                      Boolean                    @default(true)
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  manufacturer                Manufacturer?              @relation(fields: [manufacturerId], references: [id], onDelete: SetNull)
+  family                      ProductFamily?             @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  aliases                     ProductAlias[]
+  history                     ProductHistory[]
+  documents                   ProductDocument[]
+  inspections                 ProductInspectionHistory[]
+
+  @@index([name])
+  @@index([chemicalName])
+  @@index([unNumber])
+  @@index([familyId])
+  @@index([manufacturerId])
+  @@index([riskClass])
+  @@index([active, updatedAt])
+}
+
+model ProductAlias {
+  id             String   @id @default(cuid())
+  productId      String
+  name           String
+  normalizedName String   @unique
+  createdAt      DateTime @default(now())
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([name])
+}
+
+model ProductHistory {
+  id          String   @id @default(cuid())
+  productId   String
+  changedById String?
+  action      String
+  source      String?
+  changes     Json
+  createdAt   DateTime @default(now())
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  changedBy   User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([changedById])
+}
+
+model ProductDocument {
+  id           String   @id @default(cuid())
+  productId    String?
+  uploadedById String?
+  fileName     String
+  fileUrl      String
+  mimeType     String
+  version      String?
+  createdAt    DateTime @default(now())
+  product      Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([uploadedById])
+}
+
+model ProductInspectionHistory {
+  id              String   @id @default(cuid())
+  productId       String
+  inspectionId    String   @unique
+  washTimeMinutes Int?
+  notes           String?
+  createdAt       DateTime @default(now())
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inspection      Inspecao @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
+}
+
+enum ProductRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ProductWashDifficulty {
+  LOW
+  MEDIUM
+  HIGH
 }
 
 model PontoCritico {

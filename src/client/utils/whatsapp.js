@@ -71,6 +71,14 @@ function formatMotivoNaoConformidade(value) {
 export function buildWhatsAppInspectionMessage(inspecao) {
     const observacao = normalizeText(inspecao.observacoesGerais, "Sem observacoes.");
     const inspetor = normalizeText(inspecao.nomeInspetor, "Nao informado");
+    const product = inspecao.product;
+    const productLines = product ? [
+        `*Última carga:* ${product.name}`,
+        `*Família química:* ${product.family?.name ?? "Não informada"}`,
+        `*Necessita vapor:* ${product.requiresSteam ? "Sim" : "Não"}`,
+        `*Classe de risco:* ${product.riskClass ?? "Não informada"}`,
+        `*Dificuldade:* ${{ LOW: "Baixa", MEDIUM: "Média", HIGH: "Alta" }[product.washDifficulty] ?? product.washDifficulty}`
+    ] : [];
     if (inspecao.tipoInspecao === "APOS_LAVAGEM") {
         const result = inspecao.resultadoPosLavagem ?? inspecao.status;
         const lines = [
@@ -84,6 +92,7 @@ export function buildWhatsAppInspectionMessage(inspecao) {
             "",
             `*Resultado:* ${result}`
         ];
+        if (productLines.length) lines.push("", ...productLines);
         if (result === "REPROVADO") {
             lines.push("", `*Não Conformidade:* ${formatMotivoNaoConformidade(inspecao.motivoNaoConformidade)}`);
             lines.push("", "*Observação:*", observacao);
@@ -94,7 +103,8 @@ export function buildWhatsAppInspectionMessage(inspecao) {
         `*Frota:* ${inspecao.frota?.numeroFrota ?? inspecao.frotaId}`,
         `*Placa:* ${inspecao.frota?.placa ?? "Nao informada"}`,
         `*Inspetor:* ${inspetor}`,
-        `*Observacao:* ${observacao}`
+        `*Observacao:* ${observacao}`,
+        ...productLines
     ];
     const pontos = inspecao.pontosCriticos.length > 0
         ? inspecao.pontosCriticos.map((ponto, index) => {

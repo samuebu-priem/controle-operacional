@@ -17,6 +17,7 @@ type PontoCriticoInput = {
 };
 
 type CreateInspecaoInput = {
+  productId?: string | null;
   frotaId?: string;
   numeroFrota: string;
   placa: string;
@@ -80,6 +81,7 @@ function parseCreateInspecao(body: unknown): CreateInspecaoInput {
   }
 
   const frotaId = asTrimmedString(body.frotaId);
+  const productId = asTrimmedString(body.productId);
   const numeroFrota = asTrimmedString(body.numeroFrota);
   const placa = asTrimmedString(body.placa);
   const tipoEquipamento = asTrimmedString(body.tipoEquipamento);
@@ -124,6 +126,7 @@ function parseCreateInspecao(body: unknown): CreateInspecaoInput {
   }
 
   return {
+    productId: productId || null,
     frotaId: frotaId || undefined,
     numeroFrota,
     placa,
@@ -152,6 +155,7 @@ function formatInspecao(inspecao: {
   nomeInspetor: string;
   createdAt: Date;
   updatedAt: Date;
+  productInspection?: any;
   frota?: {
     id: string;
     numeroFrota: string;
@@ -234,6 +238,9 @@ function formatInspecao(inspecao: {
     nomeInspetor: inspecao.nomeInspetor,
     createdAt: inspecao.createdAt.toISOString(),
     updatedAt: inspecao.updatedAt.toISOString(),
+    productId: inspecao.productInspection?.productId ?? null,
+    product: inspecao.productInspection?.product ?? null,
+    productInspection: inspecao.productInspection ?? null,
     pontosCriticos: inspecao.pontosCriticos.map((ponto) => ({
       id: ponto.id,
       inspecaoId: ponto.inspecaoId,
@@ -352,22 +359,26 @@ function resolveDateRange(range: string, fromValue: string | undefined, toValue:
 inspecaoRoutes.get("/", async (req, res, next) => {
   try {
     const search = asTrimmedString(req.query.search);
+    const productId = asTrimmedString(req.query.productId);
 
     const inspecoes = await prisma.inspecao.findMany({
-      where: search
-        ? {
+      where: {
+        ...(productId ? { productInspection: { productId } } : {}),
+        ...(search ? {
             OR: [
               { frota: { numeroFrota: { contains: search, mode: "insensitive" } } },
               { frota: { placa: { contains: search, mode: "insensitive" } } },
-              { dataInspecao: { equals: new Date(search) } }
+              ...(Number.isNaN(new Date(search).getTime()) ? [] : [{ dataInspecao: { equals: new Date(search) } }]),
+              { productInspection: { product: { OR: [{ name: { contains: search, mode: "insensitive" } }, { chemicalName: { contains: search, mode: "insensitive" } }, { unNumber: { contains: search, mode: "insensitive" } }] } } }
             ]
-          }
-        : undefined,
+          } : {})
+      },
       orderBy: {
         dataInspecao: "desc"
       },
       include: {
         frota: true,
+        productInspection: { include: { product: { include: { family: true, manufacturer: true, documents: true } } } },
         colaborador: true,
         pontosCriticos: {
           include: {
@@ -564,6 +575,12 @@ inspecaoRoutes.post("/", requireAuth, async (req, res, next) => {
         }
       });
 
+      if (payload.productId) {
+        const product = await tx.product.findFirst({ where: { id: payload.productId, active: true }, select: { id: true } });
+        if (!product) throw new AppError("Produto da última carga inválido ou inativo", 400, "BAD_REQUEST");
+        await tx.productInspectionHistory.create({ data: { productId: product.id, inspectionId: created.id } });
+      }
+
       if (payload.pontosCriticos && payload.pontosCriticos.length > 0) {
         await tx.pontoCritico.createMany({
           data: payload.pontosCriticos.map((ponto) => ({
@@ -581,6 +598,7 @@ inspecaoRoutes.post("/", requireAuth, async (req, res, next) => {
         where: { id: created.id },
         include: {
           frota: true,
+          productInspection: { include: { product: { include: { family: true, manufacturer: true, documents: true } } } },
           colaborador: true,
           pontosCriticos: {
             include: {
@@ -623,6 +641,7 @@ inspecaoRoutes.get("/frotas/:frotaId/inspecoes", async (req, res, next) => {
       },
       include: {
         frota: true,
+        productInspection: { include: { product: { include: { family: true, manufacturer: true, documents: true } } } },
         colaborador: true,
         pontosCriticos: {
           include: {
@@ -661,6 +680,7 @@ inspecaoRoutes.get("/frotas/:frotaId/historico", async (req, res, next) => {
       },
       include: {
         frota: true,
+        productInspection: { include: { product: { include: { family: true, manufacturer: true, documents: true } } } },
         colaborador: true,
         pontosCriticos: {
           include: {
@@ -691,6 +711,7 @@ inspecaoRoutes.get("/:id", async (req, res, next) => {
       where: { id: req.params.id },
       include: {
         frota: true,
+        productInspection: { include: { product: { include: { family: true, manufacturer: true, documents: true } } } },
         colaborador: true,
         pontosCriticos: {
           include: {
@@ -807,6 +828,7 @@ inspecaoRoutes.patch("/:id", async (req, res, next) => {
       data,
       include: {
         frota: true,
+        productInspection: { include: { product: { include: { family: true, manufacturer: true, documents: true } } } },
         colaborador: true,
         pontosCriticos: {
           include: {

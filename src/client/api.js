@@ -71,6 +71,8 @@ export async function listInspecoes(filters = {}) {
         params.set("to", filters.to.trim());
     if (filters.status?.trim())
         params.set("status", filters.status.trim());
+    if (filters.productId?.trim())
+        params.set("productId", filters.productId.trim());
     const query = params.toString() ? `?${params.toString()}` : "";
     return request(`/api/inspecoes${query}`);
 }
@@ -219,4 +221,22 @@ export async function createPatioArea(payload) {
 
 export async function updatePatioArea(id, payload) {
     return request(`/api/yard/areas/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function listProducts(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") params.set(key, String(value)); });
+    return request(`/api/products?${params.toString()}`);
+}
+export async function autocompleteProducts(search) {
+    return request(`/api/products/autocomplete?search=${encodeURIComponent(search)}`);
+}
+export async function getProduct(id) { return request(`/api/products/${encodeURIComponent(id)}`); }
+export async function getProductDashboard() { return request("/api/products/dashboard"); }
+export async function createProduct(payload) { return request("/api/products", { method: "POST", body: JSON.stringify(payload) }); }
+export async function updateProduct(id, payload) { return request(`/api/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) }); }
+export async function deleteProduct(id) { return request(`/api/products/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+export async function importProducts(file, version = "") {
+    const form = new FormData(); form.append("file", file); if (version) form.append("version", version);
+    return request("/api/products/import", { method: "POST", body: form });
 }

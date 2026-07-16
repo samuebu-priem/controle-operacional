@@ -1,0 +1,32 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import AppLayout from "../components/layout/AppLayout";
+import AppHeader from "../components/layout/AppHeader";
+import Card from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import { getProductDashboard, importProducts, listProducts } from "../api";
+import { isGestor } from "../utils/auth";
+
+const labels = { LOW: "Baixo", MEDIUM: "Médio", HIGH: "Alto" };
+function RiskBadge({ value }) { return _jsx("span", { className: `product-risk product-risk--${String(value || "LOW").toLowerCase()}`, children: labels[value] ?? value }); }
+function Ranking({ title, rows, field }) { return _jsxs(Card, { className: "product-ranking", children: [_jsx("h3", { children: title }), rows?.length ? rows.slice(0, 5).map((row, index) => _jsxs("div", { children: [_jsxs("span", { children: [index + 1, ". ", row.product.name] }), _jsx("strong", { children: row[field] })] }, row.product.id)) : _jsx("p", { className: "helper", children: "Os indicadores aparecerão conforme as inspeções forem vinculadas." })] }); }
+
+export default function ProductsPage() {
+  const navigate = useNavigate(); const canManage = isGestor();
+  const [search, setSearch] = useState(""); const [familyId, setFamilyId] = useState(""); const [risk, setRisk] = useState(""); const [page, setPage] = useState(1);
+  const [data, setData] = useState({ products: [], families: [], pagination: { page: 1, pages: 1, total: 0 } }); const [dashboard, setDashboard] = useState(null); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState("");
+  useEffect(() => { const timer = setTimeout(() => { listProducts({ search, familyId, risk, page }).then(setData).catch((e) => setNotice(e.message)); }, 250); return () => clearTimeout(timer); }, [search, familyId, risk, page]);
+  useEffect(() => { getProductDashboard().then(setDashboard).catch(() => null); }, []);
+  async function handleImport(event) { const file = event.target.files?.[0]; if (!file) return; setBusy(true); setNotice(""); try { const result = await importProducts(file); setNotice(`Importação concluída: ${result.summary.created} novos, ${result.summary.updated} atualizados, ${result.summary.errors} erros.`); setPage(1); setData(await listProducts({ search, familyId, risk, page: 1 })); } catch (e) { setNotice(e.message); } finally { setBusy(false); event.target.value = ""; } }
+  return _jsx(AppLayout, { children: _jsxs("div", { className: "page-stack products-page", children: [
+    _jsx(AppHeader, { eyebrow: "Inteligência química", title: "Produtos", description: "Catálogo técnico de cargas, riscos e procedimentos de descontaminação." }),
+    _jsxs("section", { className: "products-hero", children: [_jsxs("div", { children: [_jsx("span", { children: "CATÁLOGO INDUSTRIAL" }), _jsxs("strong", { children: [data.pagination.total, " produtos controlados"] }), _jsx("p", { children: "Dados estruturados para consulta rápida antes, durante e depois da lavagem." })] }), canManage ? _jsxs("label", { className: "button product-import", children: [busy ? "Importando..." : "Importar PDF ou planilha", _jsx("input", { type: "file", accept: ".pdf,.xlsx,.csv", disabled: busy, onChange: handleImport })] }) : null] }),
+    notice ? _jsx("p", { className: "notice", children: notice }) : null,
+    _jsxs(Card, { className: "product-search", children: [_jsx("input", { className: "input", value: search, placeholder: "Buscar nome, ONU, fabricante, família, sinônimo ou risco...", onChange: (e) => { setSearch(e.target.value); setPage(1); } }), _jsxs("select", { className: "select", value: familyId, onChange: (e) => { setFamilyId(e.target.value); setPage(1); }, children: [_jsx("option", { value: "", children: "Todas as famílias" }), data.families.map((f) => _jsx("option", { value: f.id, children: f.name }, f.id))] }), _jsxs("select", { className: "select", value: risk, onChange: (e) => { setRisk(e.target.value); setPage(1); }, children: [_jsx("option", { value: "", children: "Todos os riscos" }), _jsx("option", { value: "LOW", children: "Baixo" }), _jsx("option", { value: "MEDIUM", children: "Médio" }), _jsx("option", { value: "HIGH", children: "Alto" })] })] }),
+    _jsx("section", { className: "product-grid", children: data.products.map((p) => _jsxs("button", { className: "product-card", onClick: () => navigate(`/produtos/${p.id}`), children: [_jsxs("div", { className: "product-card__head", children: [_jsx("span", { className: "product-flask", children: "⚗" }), _jsx(RiskBadge, { value: p.riskLevel })] }), _jsx("h2", { children: p.name }), _jsx("p", { children: p.chemicalName || "Nome químico não informado" }), _jsxs("div", { className: "product-card__meta", children: [_jsx("span", { children: p.family?.name || "Sem família" }), _jsxs("span", { children: ["ONU ", p.unNumber || "—"] }), _jsx("span", { children: p.requiresSteam ? "Vapor necessário" : "Sem vapor padrão" })] }), _jsxs("footer", { children: [_jsx("span", { children: p.manufacturer?.name || "Fabricante não informado" }), _jsx("strong", { children: "Abrir ficha →" })] })] }, p.id)) }),
+    data.products.length === 0 ? _jsx(Card, { children: _jsx("p", { className: "helper", children: "Nenhum produto encontrado. Gestores podem iniciar o catálogo por importação." }) }) : null,
+    _jsxs("div", { className: "product-pagination", children: [_jsx(Button, { variant: "secondary", disabled: page <= 1, onClick: () => setPage((p) => p - 1), children: "Anterior" }), _jsxs("span", { children: ["Página ", page, " de ", Math.max(1, data.pagination.pages)] }), _jsx(Button, { variant: "secondary", disabled: page >= data.pagination.pages, onClick: () => setPage((p) => p + 1), children: "Próxima" })] }),
+    dashboard ? _jsxs("section", { children: [_jsx("h2", { className: "section-title", children: "Indicadores de produto" }), _jsxs("div", { className: "product-rankings", children: [_jsx(Ranking, { title: "Mais transportados", rows: dashboard.mostTransported, field: "transported" }), _jsx(Ranking, { title: "Mais reprovados", rows: dashboard.mostRejected, field: "rejected" }), _jsx(Ranking, { title: "Maior tempo de lavagem", rows: dashboard.longestWash, field: "averageMinutes" }), _jsx(Ranking, { title: "Maior recorrência", rows: dashboard.mostRecurring, field: "recurrence" })] })] }) : null
+  ] }) });
+}

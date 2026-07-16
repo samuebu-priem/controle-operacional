@@ -46,6 +46,9 @@ function buildSearchText(inspecao) {
     inspecao.colaborador?.nome ?? "",
     inspecao.resultadoPosLavagem ?? "",
     inspecao.motivoNaoConformidade ?? "",
+    inspecao.product?.name ?? "",
+    inspecao.product?.chemicalName ?? "",
+    inspecao.product?.unNumber ?? "",
     formatDate(inspecao.dataInspecao),
     formatTime(inspecao.dataInspecao)
   ].join(" "));

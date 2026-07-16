@@ -12,6 +12,8 @@ import RegistroFrotasPage from "./pages/RegistroFrotasPage";
 import RecorrenciaDetalhePage from "./pages/RecorrenciaDetalhePage";
 import PainelGerencialPage from "./pages/PainelGerencialPage";
 import YardManagementPage from "./pages/YardManagementPage";
+import ProductsPage from "./pages/ProductsPage";
+import ProductDetailPage from "./pages/ProductDetailPage";
 import { getAuthRole, isAuthenticated, isProfileComplete } from "./utils/auth";
 
 function ProtectedRoute({ children, requireProfile = true, requireGestor = false }) {
@@ -43,6 +45,8 @@ export default function App() {
       _jsx(Route, { path: "/recorrencias/:categoria", element: _jsx(ProtectedRoute, { children: _jsx(RecorrenciaDetalhePage, {}) }) }),
       _jsx(Route, { path: "/registro-frotas", element: _jsx(ProtectedRoute, { children: _jsx(RegistroFrotasPage, {}) }) }),
       _jsx(Route, { path: "/patio", element: _jsx(ProtectedRoute, { children: _jsx(YardManagementPage, {}) }) }),
+      _jsx(Route, { path: "/produtos", element: _jsx(ProtectedRoute, { children: _jsx(ProductsPage, {}) }) }),
+      _jsx(Route, { path: "/produtos/:id", element: _jsx(ProtectedRoute, { children: _jsx(ProductDetailPage, {}) }) }),
       _jsx(Route, { path: "/painel-gerencial", element: _jsx(ProtectedRoute, { requireGestor: true, children: _jsx(PainelGerencialPage, {}) }) }),
       _jsx(Route, { path: "/desempenho", element: _jsx(ProtectedRoute, { requireGestor: true, children: _jsx(PainelGerencialPage, {}) }) }),
       _jsx(Route, { path: "/inspecao/:id", element: _jsx(ProtectedRoute, { children: _jsx(InspecaoDetalhePage, {}) }) }),

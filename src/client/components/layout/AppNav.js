@@ -9,6 +9,7 @@ const items = [
   { label: "Historico", to: "/historico" },
   { label: "Registro de frotas", to: "/registro-frotas" },
   { label: "Gestao de Patio", to: "/patio" },
+  { label: "⚗ Produtos", to: "/produtos" },
   { label: "Painel Gerencial", to: "/painel-gerencial" }
 ];
 
