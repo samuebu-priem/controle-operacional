@@ -16,7 +16,7 @@ function gridPosition(area, areas) {
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   const normalizedX = maxX === minX ? .5 : (area.x - minX) / (maxX - minX);
   const normalizedY = maxY === minY ? .5 : (area.y - minY) / (maxY - minY);
-  return { "--area-column": Math.round(normalizedX * 3) + 1, "--area-row": Math.round(normalizedY * 2) + 1, order: area.ordem };
+  return { "--area-column": Math.round(normalizedX * 3) + 1, "--area-row": Math.round(normalizedY * 2) + 1, "--occupancy": `${area.occupancyPercent || 0}%`, order: area.ordem };
 }
 
 export default function YardManagementPage() {
@@ -31,12 +31,13 @@ export default function YardManagementPage() {
   const [sideCollapsed, setSideCollapsed] = useState(false), [areaFleetQuery, setAreaFleetQuery] = useState(""), [areaFleetPage, setAreaFleetPage] = useState(1);
   const [bulk, setBulk] = useState({ step: 1, patioId: "", areaId: "", identifiers: "", origin: "MANUAL_ALLOCATION", preview: null, result: null });
   const [mobileActions, setMobileActions] = useState(false);
+  const [activePatioId, setActivePatioId] = useState("");
 
   async function load() {
     setLoading(true); setError("");
     try {
       const [mapResult, fleetResult] = await Promise.all([getOperationalYardMap(BRANCH), listYardFleets()]);
-      setDashboard(mapResult); setFleets(fleetResult.fleets || []);
+      setDashboard(mapResult); setFleets(fleetResult.fleets || []); setActivePatioId((current) => current || mapResult.patios?.[0]?.id || "");
       const areaId = params.get("areaId");
       if (areaId) { const patio = mapResult.patios.find((item) => item.areas.some((area) => area.id === areaId)); const area = patio?.areas.find((item) => item.id === areaId); if (area) setSelectedArea({ ...area, patio }); }
       const fleetId = params.get("fleetId");
@@ -159,9 +160,10 @@ export default function YardManagementPage() {
       ),
       error ? h("p", { className: "notice notice--error operational-yard__notice", role: "alert" }, error) : null,
       success ? h("p", { className: "notice notice--success operational-yard__notice", role: "status" }, success) : null,
+      h("nav", { className: "operational-patio-tabs", "aria-label": "Selecionar pátio" }, dashboard?.patios?.map((patio) => h("button", { key: patio.id, type: "button", className: activePatioId === patio.id ? "is-active" : "", onClick: () => setActivePatioId(patio.id) }, patio.nome))),
       h("main", { className: `operational-map${selectedFleet && selectedAllocation && highlightAreaId ? " operational-map--focused" : ""}`, "aria-label": "Mapa ilustrativo dos pátios" },
         h("div", { className: "operational-map__texture" }), h("div", { className: "operational-map__road" }),
-        h("div", { className: "operational-map__yards" }, dashboard?.patios?.map((patio) => {
+        h("div", { className: "operational-map__yards" }, dashboard?.patios?.filter((patio) => !activePatioId || patio.id === activePatioId).map((patio) => {
           const patioOccupied = patio.areas.reduce((sum, area) => sum + area.occupied, 0), patioCapacity = patio.areas.reduce((sum, area) => sum + area.capacidade, 0);
           return h("section", { key: patio.id, className: "operational-patio" },
             h("header", { className: "operational-patio__header" }, h("div", null, h("span", null, "REGIÃO OPERACIONAL"), h("h2", null, patio.nome)), h("small", null, `${patioOccupied} / ${patioCapacity}`)),

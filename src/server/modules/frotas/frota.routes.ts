@@ -42,6 +42,14 @@ function validateFrotaPayload(body: unknown) {
 frotaRoutes.get("/", async (_req, res, next) => {
   try {
     const frotas = await prisma.frota.findMany({
+      include: {
+        patioAllocations: {
+          where: { releasedAt: null },
+          take: 1,
+          orderBy: { registeredAt: "desc" },
+          include: { area: { include: { patio: true } } }
+        }
+      },
       orderBy: {
         createdAt: "desc"
       }

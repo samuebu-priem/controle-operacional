@@ -1,170 +1,69 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useMemo, useState } from "react";
+import { createElement as h, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { deleteFrota, listFrotas, updateFrota } from "../api";
 import AppHeader from "../components/layout/AppHeader";
 import AppLayout from "../components/layout/AppLayout";
 import Button from "../components/ui/Button";
-import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
-const tankTypes = [
-    "Tanque inox",
-    "Tanque carbono",
-    "Carreta tanque",
-    "Bitrem tanque",
-    "Isotank",
-    "Outro"
-];
-const emptyForm = {
-    numeroFrota: "",
-    placa: "",
-    tipoEquipamento: ""
-};
-function normalizeNumber(value) {
-    return value.trim().replace(/\s+/g, " ").toLowerCase();
+
+const tankTypes = ["Tanque inox", "Tanque carbono", "Carreta tanque", "Bitrem tanque", "Isotank", "Outro"];
+const emptyForm = { numeroFrota: "", placa: "", tipoEquipamento: "" };
+const allocationOf = (fleet) => fleet.patioAllocations?.[0] || null;
+const locationOf = (fleet) => { const current = allocationOf(fleet); return current ? `${current.area?.patio?.nome || "Pátio"} · ${current.area?.nome || "Setor"}` : "Fora do pátio"; };
+const updated = (fleet) => new Date(allocationOf(fleet)?.updatedAt || fleet.updatedAt || fleet.createdAt).toLocaleDateString("pt-BR");
+const sorted = (items) => [...items].sort((a, b) => String(a.numeroFrota).localeCompare(String(b.numeroFrota), "pt-BR", { numeric: true }));
+
+function FleetActions({ fleet, navigate, edit, remove }) {
+  return h("div", { className: "fleet-actions" },
+    h(Button, { variant: "secondary", onClick: () => navigate(`/frotas/${fleet.id}/historico`) }, "Histórico"),
+    h(Button, { variant: "ghost", onClick: () => navigate(`/patio?fleetId=${fleet.id}`) }, allocationOf(fleet) ? "Localização" : "Registrar no pátio"),
+    h(Button, { variant: "ghost", onClick: () => edit(fleet) }, "Editar"),
+    h(Button, { variant: "danger", onClick: () => remove(fleet) }, "Excluir")
+  );
 }
-function compareFrotaNumbers(a, b) {
-    return normalizeNumber(a).localeCompare(normalizeNumber(b), "pt-BR", {
-        numeric: true,
-        sensitivity: "base"
-    });
+
+function FleetTable({ fleets, actions }) {
+  return h("div", { className: "fleet-desktop data-table-system" }, h("table", null,
+    h("thead", null, h("tr", null, ...["Frota", "Placa", "Tipo", "Pátio / localização", "Status", "Atualização", "Ações"].map((label) => h("th", { key: label }, label)))),
+    h("tbody", null, fleets.map((fleet) => h("tr", { key: fleet.id },
+      h("td", null, h("strong", null, fleet.numeroFrota)), h("td", null, fleet.placa), h("td", null, fleet.tipoEquipamento),
+      h("td", { className: "fleet-location" }, locationOf(fleet)),
+      h("td", null, h("span", { className: allocationOf(fleet) ? "status status--success" : "status status--neutral" }, allocationOf(fleet) ? "No pátio" : "Fora")),
+      h("td", null, updated(fleet)), h("td", null, h(FleetActions, { fleet, ...actions }))
+    )))
+  ));
 }
-function sortFrotas(frotas) {
-    return [...frotas].sort((a, b) => compareFrotaNumbers(a.numeroFrota, b.numeroFrota));
+
+function FleetCards({ fleets, actions }) {
+  return h("div", { className: "fleet-mobile" }, fleets.map((fleet) => h("article", { className: "fleet-mobile-card", key: fleet.id },
+    h("header", null, h("strong", null, `FROTA ${fleet.numeroFrota}`), h("span", { className: allocationOf(fleet) ? "status status--success" : "status status--neutral" }, allocationOf(fleet) ? "NO PÁTIO" : "FORA")),
+    h("dl", null,
+      h("div", null, h("dt", null, "Placa"), h("dd", null, fleet.placa)), h("div", null, h("dt", null, "Tipo"), h("dd", null, fleet.tipoEquipamento)),
+      h("div", { className: "wide" }, h("dt", null, "Localização"), h("dd", null, locationOf(fleet))), h("div", { className: "wide" }, h("dt", null, "Atualizado em"), h("dd", null, updated(fleet)))
+    ), h(FleetActions, { fleet, ...actions })
+  )));
 }
-function matchesQuery(frota, query) {
-    const value = query.trim().toLowerCase();
-    if (!value)
-        return true;
-    return [frota.numeroFrota, frota.placa, frota.tipoEquipamento].some((field) => field.toLowerCase().includes(value));
-}
-function getTankTypeOptions(currentValue) {
-    if (currentValue && !tankTypes.includes(currentValue)) {
-        return [currentValue, ...tankTypes];
-    }
-    return tankTypes;
-}
+
 export default function RegistroFrotasPage() {
-    const navigate = useNavigate();
-    const [search, setSearch] = useState("");
-    const [frotas, setFrotas] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-    const [formOpen, setFormOpen] = useState(false);
-    const [editingFrota, setEditingFrota] = useState(null);
-    const [formValues, setFormValues] = useState(emptyForm);
-    const [saving, setSaving] = useState(false);
-    const [deletingFrota, setDeletingFrota] = useState(null);
-    const [deleting, setDeleting] = useState(false);
-    const [success, setSuccess] = useState("");
-    async function load() {
-        setLoading(true);
-        setError("");
-        setSuccess("");
-        try {
-            const response = await listFrotas();
-            setFrotas(sortFrotas(response.frotas));
-        }
-        catch (err) {
-            setError(err instanceof Error ? err.message : "Falha ao carregar frotas");
-            setFrotas([]);
-        }
-        finally {
-            setLoading(false);
-        }
-    }
-    useEffect(() => {
-        void load();
-    }, []);
-    const filteredFrotas = useMemo(() => {
-        return sortFrotas(frotas.filter((frota) => matchesQuery(frota, search)));
-    }, [frotas, search]);
-    function openCreateModal() {
-        setEditingFrota(null);
-        setFormValues(emptyForm);
-        setFormOpen(true);
-    }
-    function openEditModal(frota) {
-        setEditingFrota(frota);
-        setFormValues({
-            numeroFrota: frota.numeroFrota,
-            placa: frota.placa,
-            tipoEquipamento: frota.tipoEquipamento
-        });
-        setFormOpen(true);
-    }
-    function closeModal() {
-        if (saving)
-            return;
-        setFormOpen(false);
-        setEditingFrota(null);
-        setFormValues(emptyForm);
-    }
-    function openDeleteModal(frota) {
-        setDeletingFrota(frota);
-    }
-    function closeDeleteModal() {
-        if (deleting)
-            return;
-        setDeletingFrota(null);
-    }
-    async function saveFrota() {
-        setSaving(true);
-        setError("");
-        setSuccess("");
-        try {
-            if (editingFrota) {
-                const response = await updateFrota(editingFrota.id, formValues);
-                setFrotas((current) => sortFrotas(current.map((item) => (item.id === editingFrota.id ? response.frota : item))));
-            }
-            else {
-                const token = localStorage.getItem("token");
-                const response = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:3001"}/api/frotas`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        ...(token ? { Authorization: `Bearer ${token}` } : {})
-                    },
-                    body: JSON.stringify({
-                        ...formValues,
-                        material: formValues.tipoEquipamento,
-                        capacidade: "Não informado",
-                        observacoesFixas: null
-                    })
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => null);
-                    throw new Error(errorData?.message ?? "Falha ao criar frota");
-                }
-                const data = (await response.json());
-                setFrotas((current) => sortFrotas([...current, data.frota]));
-            }
-            closeModal();
-        }
-        catch (err) {
-            setError(err instanceof Error ? err.message : "Falha ao salvar frota");
-        }
-        finally {
-            setSaving(false);
-        }
-    }
-    async function confirmDelete() {
-        if (!deletingFrota)
-            return;
-        setDeleting(true);
-        setError("");
-        try {
-            await deleteFrota(deletingFrota.id);
-            setFrotas((current) => current.filter((item) => item.id !== deletingFrota.id));
-            setDeletingFrota(null);
-            setSuccess("Frota removida com sucesso");
-        }
-        catch (err) {
-            setError(err instanceof Error ? err.message : "Falha ao excluir frota");
-        }
-        finally {
-            setDeleting(false);
-        }
-    }
-    return (_jsxs(AppLayout, { children: [_jsxs("div", { className: "page-frame", children: [_jsx(AppHeader, { title: "Registro de Frotas", subtitle: "Cadastre e edite frotas dispon\u00EDveis para inspe\u00E7\u00E3o.", showBack: true }), _jsxs(Card, { className: "section-card search-card", children: [_jsx("div", { className: "section-head", children: _jsxs("div", { children: [_jsx("p", { className: "card-label", children: "Frotas" }), _jsx("h2", { className: "section-title", children: "Buscar e organizar cadastro" })] }) }), _jsxs("div", { className: "search-bar", children: [_jsx(Input, { label: "Buscar por frota, placa ou tipo", value: search, onChange: (event) => setSearch(event.target.value), placeholder: "Ex.: 1234-2, ABC-1234, Tanque Inox" }), _jsxs("div", { className: "inline-actions", children: [_jsx(Button, { type: "button", onClick: openCreateModal, children: "Adicionar frota" }), _jsx(Button, { variant: "secondary", type: "button", onClick: () => void load(), children: "Atualizar" })] })] }), error ? _jsx("p", { className: "notice notice--error", children: error }) : null, loading ? _jsx("p", { className: "helper", children: "Carregando..." }) : null] }), _jsxs("section", { className: "page-stack", children: [_jsx("div", { className: "history-list", children: filteredFrotas.map((frota) => (_jsx("div", { children: _jsx(Card, { className: "frota-card", children: _jsxs("div", { children: [_jsx("div", { className: "frota-card__top", children: _jsxs("div", { children: [_jsx("p", { className: "frota-card__label", children: "Registro de frota" }), _jsx("h3", { className: "frota-card__title", children: frota.numeroFrota }), _jsx("p", { className: "frota-card__meta", children: frota.tipoEquipamento })] }) }), _jsxs("div", { children: [_jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Placa:" }), " ", frota.placa] }), _jsxs("p", { className: "frota-card__line", children: [_jsx("strong", { children: "Tipo:" }), " ", frota.tipoEquipamento] })] }), _jsxs("div", { className: "frota-card__actions", children: [_jsx(Button, { variant: "secondary", type: "button", onClick: () => navigate(`/frotas/${frota.id}/historico`), children: "Hist\u00F3rico de inspe\u00E7\u00E3o" }), _jsx(Button, { variant: "ghost", type: "button", onClick: () => openEditModal(frota), children: "Editar" }), _jsx(Button, { variant: "danger", type: "button", onClick: () => openDeleteModal(frota), children: "Excluir" })] })] }) }) }, frota.id))) }), !loading && filteredFrotas.length === 0 ? _jsx("p", { className: "helper", children: "Nenhuma frota encontrada." }) : null] })] }), success ? _jsx("p", { className: "notice notice--success", children: success }) : null, formOpen ? (_jsx("div", { className: "modal-overlay modal-overlay--center", role: "presentation", onClick: closeModal, children: _jsxs("div", { className: "modal modal--fleet-registration", role: "dialog", "aria-modal": "true", onClick: (event) => event.stopPropagation(), children: [_jsx("h2", { className: "modal__title", children: editingFrota ? "Editar frota" : "Adicionar frota" }), _jsxs("div", { className: "modal__body", children: [_jsx(Input, { label: "Frota", value: formValues.numeroFrota, onChange: (event) => setFormValues((current) => ({ ...current, numeroFrota: event.target.value })) }), _jsx(Input, { label: "Placa", value: formValues.placa, onChange: (event) => setFormValues((current) => ({ ...current, placa: event.target.value })) }), _jsxs("label", { className: "input-field", children: [_jsx("span", { className: "input-field__label", children: "Tipo de tanque" }), _jsxs("select", { className: "input", value: formValues.tipoEquipamento, onChange: (event) => setFormValues((current) => ({ ...current, tipoEquipamento: event.target.value })), children: [_jsx("option", { value: "", children: "Selecione" }), getTankTypeOptions(formValues.tipoEquipamento).map((type) => (_jsx("option", { value: type, children: type }, type)))] })] })] }), _jsxs("div", { className: "modal__actions", children: [_jsx(Button, { variant: "ghost", type: "button", onClick: closeModal, children: "Cancelar" }), _jsx(Button, { type: "button", onClick: () => void saveFrota(), disabled: saving, children: saving ? "Salvando..." : "Salvar" })] })] }) })) : null, deletingFrota ? (_jsx("div", { className: "modal-overlay", role: "presentation", onClick: closeDeleteModal, children: _jsxs("div", { className: "modal", role: "dialog", "aria-modal": "true", onClick: (event) => event.stopPropagation(), children: [_jsx("h2", { className: "modal__title", children: "Excluir frota" }), _jsxs("p", { className: "helper", children: ["Excluir frota ", _jsx("strong", { children: deletingFrota.numeroFrota }), "?"] }), _jsx("p", { className: "helper", children: "Se houver hist\u00F3rico vinculado, o sistema vai impedir a exclus\u00E3o." }), _jsxs("div", { className: "modal__actions", children: [_jsx(Button, { variant: "ghost", type: "button", onClick: closeDeleteModal, children: "Cancelar" }), _jsx(Button, { variant: "danger", type: "button", onClick: () => void confirmDelete(), disabled: deleting, children: deleting ? "Excluindo..." : "Excluir frota" })] })] }) })) : null] }));
+  const navigate = useNavigate();
+  const [fleets, setFleets] = useState([]), [search, setSearch] = useState(""), [status, setStatus] = useState("TODOS"), [patio, setPatio] = useState("TODOS");
+  const [loading, setLoading] = useState(true), [error, setError] = useState(""), [success, setSuccess] = useState("");
+  const [formOpen, setFormOpen] = useState(false), [editing, setEditing] = useState(null), [form, setForm] = useState(emptyForm), [saving, setSaving] = useState(false), [deleting, setDeleting] = useState(null);
+  async function load() { setLoading(true); setError(""); try { const response = await listFrotas(); setFleets(sorted(response.frotas || [])); } catch (err) { setError(err instanceof Error ? err.message : "Falha ao carregar frotas"); } finally { setLoading(false); } }
+  useEffect(() => { void load(); }, []);
+  const patios = useMemo(() => [...new Set(fleets.map((fleet) => allocationOf(fleet)?.area?.patio?.nome).filter(Boolean))], [fleets]);
+  const visible = useMemo(() => sorted(fleets.filter((fleet) => { const text = `${fleet.numeroFrota} ${fleet.placa} ${fleet.tipoEquipamento}`.toLowerCase(); const located = Boolean(allocationOf(fleet)); return text.includes(search.toLowerCase().trim()) && (status === "TODOS" || (status === "PATIO") === located) && (patio === "TODOS" || allocationOf(fleet)?.area?.patio?.nome === patio); })), [fleets, search, status, patio]);
+  function openCreate() { setEditing(null); setForm(emptyForm); setFormOpen(true); }
+  function openEdit(fleet) { setEditing(fleet); setForm({ numeroFrota: fleet.numeroFrota, placa: fleet.placa, tipoEquipamento: fleet.tipoEquipamento }); setFormOpen(true); }
+  async function save() { setSaving(true); setError(""); try { if (editing) { const response = await updateFrota(editing.id, form); setFleets((current) => sorted(current.map((item) => item.id === editing.id ? { ...response.frota, patioAllocations: item.patioAllocations } : item))); } else { const token = localStorage.getItem("token"); const response = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:3001"}/api/frotas`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ ...form, material: form.tipoEquipamento, capacidade: "Não informado", observacoesFixas: null }) }); const data = await response.json().catch(() => null); if (!response.ok) throw new Error(data?.message || "Falha ao criar frota"); setFleets((current) => sorted([...current, data.frota])); } setFormOpen(false); setSuccess("Frota salva com sucesso."); } catch (err) { setError(err instanceof Error ? err.message : "Falha ao salvar frota"); } finally { setSaving(false); } }
+  async function confirmDelete() { if (!deleting) return; setSaving(true); try { await deleteFrota(deleting.id); setFleets((current) => current.filter((item) => item.id !== deleting.id)); setDeleting(null); setSuccess("Frota removida com sucesso."); } catch (err) { setError(err instanceof Error ? err.message : "Falha ao excluir frota"); } finally { setSaving(false); } }
+  const actions = { navigate, edit: openEdit, remove: setDeleting };
+  return h(AppLayout, null, h("div", { className: "page-frame fleet-registry-v2" },
+    h(AppHeader, { title: "Registro de Frotas", subtitle: "Cadastro e localização operacional das frotas.", showBack: true, actions: h(Button, { onClick: openCreate }, "Nova frota") }),
+    h("section", { className: "fleet-filters-v2" }, h(Input, { label: "Pesquisar", value: search, onChange: (event) => setSearch(event.target.value), placeholder: "Frota, placa ou tipo" }), h("label", { className: "input-field" }, h("span", { className: "input-field__label" }, "Status"), h("select", { className: "input", value: status, onChange: (event) => setStatus(event.target.value) }, h("option", { value: "TODOS" }, "Todos"), h("option", { value: "PATIO" }, "No pátio"), h("option", { value: "FORA" }, "Fora do pátio"))), h("label", { className: "input-field" }, h("span", { className: "input-field__label" }, "Pátio"), h("select", { className: "input", value: patio, onChange: (event) => setPatio(event.target.value) }, h("option", { value: "TODOS" }, "Todos"), patios.map((name) => h("option", { key: name, value: name }, name)))), h(Button, { variant: "secondary", onClick: () => void load() }, "Atualizar")),
+    error ? h("p", { className: "notice notice--error" }, error) : null, success ? h("p", { className: "notice notice--success" }, success) : null,
+    loading ? h("div", { className: "loading-state-system" }, h("i"), "Carregando frotas...") : visible.length ? h("div", null, h(FleetTable, { fleets: visible, actions }), h(FleetCards, { fleets: visible, actions })) : h("div", { className: "empty-state-system" }, h("strong", null, "Nenhuma frota encontrada")),
+    formOpen ? h("div", { className: "modal-overlay modal-overlay--center", onClick: () => !saving && setFormOpen(false) }, h("div", { className: "modal fleet-form-v2", role: "dialog", "aria-modal": "true", onClick: (event) => event.stopPropagation() }, h("h2", null, editing ? "Editar frota" : "Nova frota"), h("div", { className: "fleet-form-grid" }, h(Input, { label: "Frota", value: form.numeroFrota, onChange: (event) => setForm({ ...form, numeroFrota: event.target.value }) }), h(Input, { label: "Placa", value: form.placa, onChange: (event) => setForm({ ...form, placa: event.target.value.toUpperCase() }) }), h("label", { className: "input-field wide" }, h("span", { className: "input-field__label" }, "Tipo de tanque"), h("select", { className: "input", value: form.tipoEquipamento, onChange: (event) => setForm({ ...form, tipoEquipamento: event.target.value }) }, h("option", { value: "" }, "Selecione"), tankTypes.map((type) => h("option", { key: type, value: type }, type))))), h("div", { className: "modal__actions" }, h(Button, { variant: "ghost", onClick: () => setFormOpen(false) }, "Cancelar"), h(Button, { disabled: saving, onClick: () => void save() }, saving ? "Salvando..." : "Salvar"))) ) : null,
+    deleting ? h("div", { className: "modal-overlay", onClick: () => setDeleting(null) }, h("div", { className: "modal", onClick: (event) => event.stopPropagation() }, h("h2", null, "Excluir frota"), h("p", null, `Excluir a frota ${deleting.numeroFrota}?`), h("div", { className: "modal__actions" }, h(Button, { variant: "ghost", onClick: () => setDeleting(null) }, "Cancelar"), h(Button, { variant: "danger", disabled: saving, onClick: () => void confirmDelete() }, "Excluir")))) : null
+  ));
 }
