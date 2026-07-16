@@ -3183,3 +3183,146 @@ img {
 
 .app-nav__brand{display:flex;align-items:center;gap:10px;width:100%;padding:4px 8px 16px;border-bottom:1px solid rgba(148,163,184,.1)}.app-nav__brand>span{display:grid;place-items:center;width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--primary),var(--accent));color:#001522;font-weight:1000}.app-nav__brand>div{display:grid;line-height:1.05}.app-nav__brand small{color:#7895a1;font-size:.67rem}.app-nav__items{display:grid;width:100%;gap:7px}.nav-item__icon{display:grid;place-items:center;flex:0 0 25px;height:25px;font-style:normal;font-size:1rem}.nav-item.active .nav-item__icon{color:#001522}
 @media(min-width:1024px){.app-nav{display:flex;flex-direction:column;flex-wrap:nowrap;justify-content:flex-start;gap:16px}.app-nav__items{align-content:start}}
+
+/* Orientação específica: Histórico de Inspeções e Registro de Frotas */
+.history-page .history-list,
+.history-list:has(.frota-card) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 1024px) {
+  .history-page .history-search-panel {
+    display: grid;
+    grid-template-columns: minmax(300px, 1.35fr) minmax(220px, .8fr) minmax(260px, 1fr) auto;
+    align-items: end;
+    gap: 14px;
+  }
+
+  .history-page .history-search-panel > div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .history-page .history-search-panel .search-bar {
+    min-width: 0;
+  }
+
+  .history-page .history-search-panel .history-action-row {
+    justify-content: flex-end;
+    align-self: end;
+  }
+
+  .history-page .history-inspection-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: 15px 18px;
+  }
+
+  .history-page .history-item__top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .history-page .history-inspection-card__meta {
+    display: grid;
+    grid-template-columns: minmax(150px, .9fr) minmax(130px, .8fr) minmax(150px, .9fr) minmax(140px, .8fr);
+    align-items: center;
+    gap: 5px 18px;
+  }
+
+  .history-page .history-inspection-card__meta h3,
+  .history-page .history-inspection-card__meta p {
+    margin: 0;
+  }
+
+  .history-page .history-inspection-card__meta h3 {
+    grid-row: span 2;
+  }
+
+  .history-page .history-inspection-card__actions {
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+  }
+
+  .history-page .history-inspection-card__actions .button {
+    min-width: auto;
+    white-space: nowrap;
+  }
+
+  .history-list:has(.frota-card) .frota-card {
+    padding: 15px 18px;
+  }
+
+  .history-list:has(.frota-card) .frota-card > div {
+    display: grid;
+    grid-template-columns: minmax(180px, .8fr) minmax(220px, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .history-list:has(.frota-card) .frota-card__top,
+  .history-list:has(.frota-card) .frota-card__top > div {
+    min-width: 0;
+  }
+
+  .history-list:has(.frota-card) .frota-card__label,
+  .history-list:has(.frota-card) .frota-card__title,
+  .history-list:has(.frota-card) .frota-card__meta,
+  .history-list:has(.frota-card) .frota-card__line {
+    margin-top: 0;
+    margin-bottom: 3px;
+  }
+
+  .history-list:has(.frota-card) .frota-card__actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 7px;
+  }
+
+  .history-list:has(.frota-card) .frota-card__actions .button {
+    white-space: nowrap;
+  }
+
+  .page-frame:not(.history-page) > .search-card .search-bar {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) auto;
+    align-items: end;
+    gap: 12px;
+  }
+
+  .page-frame:not(.history-page) > .search-card .inline-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 767px) {
+  .history-page .history-search-panel,
+  .history-page .history-inspection-card,
+  .history-page .history-item__top,
+  .history-page .history-inspection-card__meta,
+  .history-list:has(.frota-card) .frota-card > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .history-page .history-inspection-card__actions,
+  .history-list:has(.frota-card) .frota-card__actions,
+  .page-frame:not(.history-page) > .search-card .inline-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .history-page .history-inspection-card__actions .button,
+  .history-list:has(.frota-card) .frota-card__actions .button,
+  .page-frame:not(.history-page) > .search-card .inline-actions .button {
+    width: 100%;
+  }
+}
