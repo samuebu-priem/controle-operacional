@@ -30,6 +30,14 @@ function booleanValue(value: unknown) { return ["sim", "true", "1", "yes", "s"].
 function level(value: unknown): "LOW" | "MEDIUM" | "HIGH" {
   const v = normalize(value); return v.includes("alt") || v.includes("dificil") ? "HIGH" : v.includes("med") || v.includes("moder") ? "MEDIUM" : "LOW";
 }
+const washingProcedures = ["WASH_ONLY", "STEAM_ONLY", "WASH_AND_STEAM", "NO_WASH_REQUIRED", "NOT_DEFINED"] as const;
+type WashingProcedureValue = typeof washingProcedures[number];
+function parseWashingProcedure(value: unknown): WashingProcedureValue {
+  const raw = clean(value).toUpperCase(); if (washingProcedures.includes(raw as WashingProcedureValue)) return raw as WashingProcedureValue;
+  const v = normalize(value).replace(/\s+/g, "_");
+  const aliases: Record<string, WashingProcedureValue> = { lavagem_sem_vapor: "WASH_ONLY", somente_vapor: "STEAM_ONLY", lavagem_vapor: "WASH_AND_STEAM", lavagem_e_vapor: "WASH_AND_STEAM", nao_necessita_lavagem: "NO_WASH_REQUIRED", nao_definido: "NOT_DEFINED" };
+  return aliases[v] ?? "NOT_DEFINED";
+}
 function keyMap(row: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [normalize(key).replace(/\s/g, ""), value]));
 }
@@ -47,6 +55,7 @@ function rowToProduct(row: Record<string, unknown>) {
     washDifficulty: level(pick(row, "dificuldade de lavagem", "dificuldade")), averageWashMinutes: Number.parseInt(pick(row, "tempo médio", "tempo medio", "minutos"), 10) || null,
     criticalPoints: pick(row, "pontos críticos", "pontos criticos"), residueHidePoints: pick(row, "pontos onde costuma esconder resíduo", "pontos de resíduo"), mainRejectionCauses: pick(row, "principais causas de reprovação", "causas de reprovação"),
     approvalCriteria: pick(row, "critérios de aprovação", "criterios de aprovacao"), notes: pick(row, "observações", "observacoes"), manualVersion: pick(row, "versão do manual", "versao"),
+    washingProcedure: parseWashingProcedure(pick(row, "procedimento_lavagem", "procedimento lavagem", "procedimento da estação")), washingProcedureNotes: pick(row, "observacao_procedimento", "observação do procedimento", "observacoes do procedimento"),
     aliases: pick(row, "sinônimos", "sinonimos", "aliases").split(/[;,|]/).map((item) => item.trim()).filter(Boolean)
   };
 }
@@ -86,7 +95,8 @@ async function parseFile(file: Express.Multer.File) {
           const behavior = clean(cells[1]).replace(/\s*\n\s*/g, " "); const difficultyText = clean(cells[2]); const difficulty = Math.max(...(difficultyText.match(/\d+/g) ?? ["1"]).map(Number));
           const strategy = clean(cells[3]).replace(/\s*\n\s*/g, " "); const vapor = clean(cells[4]).replace(/\s*\n\s*/g, " "); const critical = clean(cells[5]).replace(/\s*\n\s*/g, " ");
           const combined = normalize(`${behavior} ${strategy} ${critical}`); const highRisk = /(toxic|explos|polimer|inflam|corros|oxidante|reativ)/.test(combined);
-          tableProducts.push({ name, chemicalName: name, familyName: familyByPage[page.num] ?? `Manual técnico · página ${page.num}`, notes: behavior, washType: strategy, criticalPoints: critical, residueHidePoints: critical, mainRejectionCauses: critical, manualVersion: "Edição 1 / versão 1.0", requiresSteam: /util|opcional|sim/.test(normalize(vapor)), washDifficulty: difficulty >= 7 ? "HIGH" : difficulty >= 4 ? "MEDIUM" : "LOW", riskLevel: highRisk ? "HIGH" : difficulty >= 5 ? "MEDIUM" : "LOW", aliases: name.split(/\s+\/\s+/).map((v) => v.trim()).filter((v) => v !== name), recommendedCleaningProducts: strategy });
+          const steamSuggested = /util|opcional|sim/.test(normalize(vapor));
+          tableProducts.push({ name, chemicalName: name, familyName: familyByPage[page.num] ?? `Manual técnico · página ${page.num}`, notes: behavior, washType: strategy, criticalPoints: critical, residueHidePoints: critical, mainRejectionCauses: critical, manualVersion: "Edição 1 / versão 1.0", requiresSteam: steamSuggested, washingProcedure: steamSuggested ? "WASH_AND_STEAM" : "WASH_ONLY", washingProcedureNotes: "Sugestão importada do manual; requer confirmação operacional do gestor.", washDifficulty: difficulty >= 7 ? "HIGH" : difficulty >= 4 ? "MEDIUM" : "LOW", riskLevel: highRisk ? "HIGH" : difficulty >= 5 ? "MEDIUM" : "LOW", aliases: name.split(/\s+\/\s+/).map((v) => v.trim()).filter((v) => v !== name), recommendedCleaningProducts: strategy });
         }
       }
       if (!tableProducts.length) throw new AppError("O PDF não contém tabela ou campos reconhecíveis. Use a planilha-modelo.", 400, "UNSUPPORTED_PDF_LAYOUT");
@@ -107,13 +117,21 @@ async function saveProduct(input: any, userId: string, source: string) {
     const family = await upsertNamed(tx, "productFamily", clean(input.familyName));
     const manufacturer = await upsertNamed(tx, "manufacturer", clean(input.manufacturerName));
     const current = await tx.product.findFirst({ where: { OR: [...(input.id ? [{ id: input.id }] : []), { normalizedName }, ...(input.internalCode ? [{ internalCode: input.internalCode }] : [])] }, include: { aliases: true } });
-    const data: any = { normalizedName, familyId: family?.id ?? null, manufacturerId: manufacturer?.id ?? null, riskLevel: level(input.riskLevel), requiresSteam: Boolean(input.requiresSteam), washDifficulty: level(input.washDifficulty), averageWashMinutes: input.averageWashMinutes ? Number(input.averageWashMinutes) : null, active: input.active !== false };
+    const isManualSource = source === "MANUAL" || source === "BULK_MANUAL" || source === "IMPORT_OVERRIDE";
+    const hasProcedureInput = input.washingProcedure !== undefined;
+    let procedure = hasProcedureInput ? parseWashingProcedure(input.washingProcedure) : current?.washingProcedure ?? "NOT_DEFINED";
+    let procedureNotes = input.washingProcedureNotes !== undefined ? clean(input.washingProcedureNotes) || null : current?.washingProcedureNotes ?? null;
+    if (current?.washingProcedureManualOverride && !isManualSource) { procedure = current.washingProcedure; procedureNotes = current.washingProcedureNotes; }
+    if (current && !isManualSource && current.washingProcedure !== "NOT_DEFINED") { procedure = current.washingProcedure; procedureNotes = current.washingProcedureNotes; }
+    const manualOverride = isManualSource && (hasProcedureInput || input.washingProcedureNotes !== undefined) ? true : current?.washingProcedureManualOverride ?? false;
+    const usesSteam = procedure === "STEAM_ONLY" || procedure === "WASH_AND_STEAM";
+    const data: any = { normalizedName, familyId: family?.id ?? null, manufacturerId: manufacturer?.id ?? null, riskLevel: level(input.riskLevel), requiresSteam: procedure !== "NOT_DEFINED" ? usesSteam : Boolean(input.requiresSteam), washingProcedure: procedure, washingProcedureNotes: procedureNotes, washingProcedureManualOverride: manualOverride, washDifficulty: level(input.washDifficulty), averageWashMinutes: input.averageWashMinutes ? Number(input.averageWashMinutes) : null, active: input.active !== false };
     for (const field of fields) data[field] = clean(input[field]) || null;
     data.name = clean(input.name);
     const product = current ? await tx.product.update({ where: { id: current.id }, data }) : await tx.product.create({ data });
     const aliases = Array.isArray(input.aliases) ? input.aliases : clean(input.aliases).split(/[;,|]/);
     for (const aliasName of aliases.map(clean).filter(Boolean)) await tx.productAlias.upsert({ where: { normalizedName: normalize(aliasName) }, create: { productId: product.id, name: aliasName, normalizedName: normalize(aliasName) }, update: { productId: product.id, name: aliasName } });
-    await tx.productHistory.create({ data: { productId: product.id, changedById: userId, action: current ? "UPDATED" : "CREATED", source, changes: data } });
+    await tx.productHistory.create({ data: { productId: product.id, changedById: userId, action: current ? "UPDATED" : "CREATED", source, changes: { ...data, washingProcedureAudit: { previousValue: current?.washingProcedure ?? null, newValue: procedure, previousNotes: current?.washingProcedureNotes ?? null, newNotes: procedureNotes, manualOverride } } } });
     return { product, created: !current };
   });
 }
@@ -122,8 +140,8 @@ productRoutes.use(requireAuth);
 
 productRoutes.get("/", async (req, res, next) => { try {
   const search = clean(req.query.search); const page = Math.max(1, Number(req.query.page) || 1); const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 24));
-  const risk = clean(req.query.risk); const familyId = clean(req.query.familyId); const tokens = search.split(/\s+/).filter(Boolean);
-  const where: any = { active: req.query.includeInactive === "true" ? undefined : true, ...(risk ? { riskLevel: risk } : {}), ...(familyId ? { familyId } : {}) };
+  const risk = clean(req.query.risk); const familyId = clean(req.query.familyId); const procedure = clean(req.query.procedure); const tokens = search.split(/\s+/).filter(Boolean);
+  const where: any = { active: req.query.includeInactive === "true" ? undefined : true, ...(risk ? { riskLevel: risk } : {}), ...(familyId ? { familyId } : {}), ...(procedure ? { washingProcedure: procedure } : {}) };
   if (tokens.length) where.AND = tokens.map((token) => ({ OR: [{ name: { contains: token, mode: "insensitive" } }, { chemicalName: { contains: token, mode: "insensitive" } }, { unNumber: { contains: token, mode: "insensitive" } }, { riskClass: { contains: token, mode: "insensitive" } }, { manufacturer: { name: { contains: token, mode: "insensitive" } } }, { family: { name: { contains: token, mode: "insensitive" } } }, { aliases: { some: { name: { contains: token, mode: "insensitive" } } } }] }));
   const [products, total, families] = await Promise.all([prisma.product.findMany({ where, include: productInclude, orderBy: { name: "asc" }, skip: (page - 1) * limit, take: limit }), prisma.product.count({ where }), prisma.productFamily.findMany({ orderBy: { name: "asc" } })]);
   res.set("Cache-Control", "private, max-age=30"); return res.json({ products, families, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
@@ -140,13 +158,28 @@ productRoutes.get("/dashboard", async (_req, res, next) => { try {
   const map = new Map<string, any>(); for (const item of inspections) { const row = map.get(item.productId) ?? { product: item.product, transported: 0, rejected: 0, totalMinutes: 0, timed: 0, recurrence: 0 }; row.transported++; if (item.inspection.status === "REPROVADO" || item.inspection.resultadoPosLavagem === "REPROVADO") row.rejected++; if (item.washTimeMinutes) { row.totalMinutes += item.washTimeMinutes; row.timed++; } row.recurrence += item.inspection.pontosCriticos.length; map.set(item.productId, row); }
   const rows = [...map.values()].map((r) => ({ ...r, averageMinutes: r.timed ? Math.round(r.totalMinutes / r.timed) : r.product.averageWashMinutes ?? 0 }));
   const families = await prisma.product.groupBy({ by: ["familyId"], where: { active: true }, _count: true }); const familyNames = await prisma.productFamily.findMany(); const names = new Map(familyNames.map((f: any) => [f.id, f.name]));
-  return res.json({ mostTransported: [...rows].sort((a,b)=>b.transported-a.transported).slice(0,10), mostRejected: [...rows].sort((a,b)=>b.rejected-a.rejected).slice(0,10), longestWash: [...rows].sort((a,b)=>b.averageMinutes-a.averageMinutes).slice(0,10), mostSteam: rows.filter((r)=>r.product.requiresSteam).sort((a,b)=>b.transported-a.transported).slice(0,10), mostRecurring: [...rows].sort((a,b)=>b.recurrence-a.recurrence).slice(0,10), byFamily: families.map((f:any)=>({ name: names.get(f.familyId) ?? "Sem família", total: f._count })) });
+  const procedureCounts = await prisma.product.groupBy({ by: ["washingProcedure"], where: { active: true }, _count: true });
+  const inspectionProcedureCounts = await prisma.productInspectionHistory.groupBy({ by: ["productWashingProcedureSnapshot"], _count: true });
+  return res.json({ mostTransported: [...rows].sort((a,b)=>b.transported-a.transported).slice(0,10), mostRejected: [...rows].sort((a,b)=>b.rejected-a.rejected).slice(0,10), longestWash: [...rows].sort((a,b)=>b.averageMinutes-a.averageMinutes).slice(0,10), mostSteam: rows.filter((r)=>["STEAM_ONLY","WASH_AND_STEAM"].includes(r.product.washingProcedure)).sort((a,b)=>b.transported-a.transported).slice(0,10), mostRecurring: [...rows].sort((a,b)=>b.recurrence-a.recurrence).slice(0,10), byFamily: families.map((f:any)=>({ name: names.get(f.familyId) ?? "Sem família", total: f._count })), procedureCounts: Object.fromEntries(procedureCounts.map((r:any)=>[r.washingProcedure,r._count])), inspectionProcedureCounts: Object.fromEntries(inspectionProcedureCounts.map((r:any)=>[r.productWashingProcedureSnapshot ?? "NOT_DEFINED",r._count])) });
 } catch (e) { next(e); } });
+
+productRoutes.post("/import/preview", requireGestor, upload.single("file"), async (req, res, next) => { try {
+  if (!req.file) throw new AppError("Arquivo obrigatório", 400, "BAD_REQUEST"); const rows = await parseFile(req.file);
+  const names = rows.map((row:any)=>normalize(row.name)); const existing = await prisma.product.findMany({ where: { normalizedName: { in: names } }, select: { normalizedName: true, washingProcedure: true, washingProcedureNotes: true, washingProcedureManualOverride: true } }); const map = new Map(existing.map((p:any)=>[p.normalizedName,p]));
+  return res.json({ preview: rows.map((row:any,index:number)=>{const current:any=map.get(normalize(row.name));const incoming=parseWashingProcedure(row.washingProcedure);return { row:index+2,name:row.name,currentProcedure:current?.washingProcedure??null,incomingProcedure:incoming,notes:row.washingProcedureNotes||null,action:current?"UPDATE":"CREATE",protectedByManualOverride:Boolean(current?.washingProcedureManualOverride),willChangeProcedure:!current?.washingProcedureManualOverride&&(!current||current.washingProcedure==="NOT_DEFINED")&&incoming!=="NOT_DEFINED"};}) });
+} catch(e){next(e);} });
+
+productRoutes.patch("/bulk/procedure", requireGestor, async (req, res, next) => { try {
+  const ids = Array.isArray(req.body.ids) ? [...new Set(req.body.ids.map(clean).filter(Boolean))] : []; if (!ids.length) throw new AppError("Selecione ao menos um produto",400,"BAD_REQUEST");
+  const procedure = parseWashingProcedure(req.body.washingProcedure); const notes = clean(req.body.washingProcedureNotes)||null; const userId=(req as AuthenticatedRequest).user!.id;
+  const products=await prisma.product.findMany({where:{id:{in:ids}}}); await prisma.$transaction(async(tx:any)=>{for(const product of products){await tx.product.update({where:{id:product.id},data:{washingProcedure:procedure,washingProcedureNotes:notes,washingProcedureManualOverride:true,requiresSteam:["STEAM_ONLY","WASH_AND_STEAM"].includes(procedure)}});await tx.productHistory.create({data:{productId:product.id,changedById:userId,action:"WASHING_PROCEDURE_UPDATED",source:"BULK_MANUAL",changes:{washingProcedureAudit:{previousValue:product.washingProcedure,newValue:procedure,previousNotes:product.washingProcedureNotes,newNotes:notes,manualOverride:true}}}});}});
+  return res.json({updated:products.length});
+} catch(e){next(e);} });
 
 productRoutes.post("/import", requireGestor, upload.single("file"), async (req, res, next) => { try {
   const authReq = req as AuthenticatedRequest; if (!req.file || !authReq.user) throw new AppError("Arquivo obrigatório", 400, "BAD_REQUEST");
   const products = await parseFile(req.file); await fs.mkdir(documentDir, { recursive: true }); const storedName = `${Date.now()}-${randomUUID()}${path.extname(req.file.originalname).toLowerCase()}`; await fs.writeFile(path.join(documentDir, storedName), req.file.buffer);
-  let created = 0, updated = 0; const importedIds: string[] = []; const errors: any[] = []; for (const [index, product] of products.entries()) { try { const result = await saveProduct(product, authReq.user.id, `IMPORT:${req.file.originalname}`); importedIds.push(result.product.id); result.created ? created++ : updated++; } catch (error) { errors.push({ row: index + 2, message: error instanceof Error ? error.message : "Erro" }); } }
+  let created = 0, updated = 0; const importedIds: string[] = []; const errors: any[] = []; for (const [index, product] of products.entries()) { try { const result = await saveProduct(product, authReq.user.id, req.body.overrideManual === "true" ? "IMPORT_OVERRIDE" : `IMPORT:${req.file.originalname}`); importedIds.push(result.product.id); result.created ? created++ : updated++; } catch (error) { errors.push({ row: index + 2, message: error instanceof Error ? error.message : "Erro" }); } }
   if (importedIds.length) await prisma.productDocument.createMany({ data: [...new Set(importedIds)].map((productId) => ({ productId, uploadedById: authReq.user!.id, fileName: req.file!.originalname, fileUrl: `/uploads/products/${storedName}`, mimeType: req.file!.mimetype, version: clean(req.body.version) || null })) });
   return res.status(201).json({ summary: { read: products.length, created, updated, errors: errors.length }, errors });
 } catch (e) { next(e); } });

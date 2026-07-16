@@ -576,9 +576,9 @@ inspecaoRoutes.post("/", requireAuth, async (req, res, next) => {
       });
 
       if (payload.productId) {
-        const product = await tx.product.findFirst({ where: { id: payload.productId, active: true }, select: { id: true } });
+        const product = await tx.product.findFirst({ where: { id: payload.productId, active: true }, select: { id: true, washingProcedure: true, washingProcedureNotes: true } });
         if (!product) throw new AppError("Produto da última carga inválido ou inativo", 400, "BAD_REQUEST");
-        await tx.productInspectionHistory.create({ data: { productId: product.id, inspectionId: created.id } });
+        await tx.productInspectionHistory.create({ data: { productId: product.id, inspectionId: created.id, productWashingProcedureSnapshot: product.washingProcedure, productWashingNotesSnapshot: product.washingProcedureNotes } });
       }
 
       if (payload.pontosCriticos && payload.pontosCriticos.length > 0) {

@@ -72,13 +72,10 @@ export function buildWhatsAppInspectionMessage(inspecao) {
     const observacao = normalizeText(inspecao.observacoesGerais, "Sem observacoes.");
     const inspetor = normalizeText(inspecao.nomeInspetor, "Nao informado");
     const product = inspecao.product;
-    const productLines = product ? [
-        `*Última carga:* ${product.name}`,
-        `*Família química:* ${product.family?.name ?? "Não informada"}`,
-        `*Necessita vapor:* ${product.requiresSteam ? "Sim" : "Não"}`,
-        `*Classe de risco:* ${product.riskClass ?? "Não informada"}`,
-        `*Dificuldade:* ${{ LOW: "Baixa", MEDIUM: "Média", HIGH: "Alta" }[product.washDifficulty] ?? product.washDifficulty}`
-    ] : [];
+    const procedureLabels = { WASH_ONLY: "Lavagem sem vapor", STEAM_ONLY: "Somente vapor", WASH_AND_STEAM: "Lavagem + vapor", NO_WASH_REQUIRED: "Não necessita lavagem", NOT_DEFINED: "Não definido" };
+    const snapshotProcedure = inspecao.productInspection?.productWashingProcedureSnapshot ?? product?.washingProcedure ?? "NOT_DEFINED";
+    const snapshotNotes = inspecao.productInspection?.productWashingNotesSnapshot ?? product?.washingProcedureNotes;
+    const productLines = product ? [`*Última carga:* ${product.name}`, `*Procedimento da estação:* ${procedureLabels[snapshotProcedure] ?? "Não definido"}`, ...(snapshotNotes ? [`*Observação operacional:* ${snapshotNotes}`] : [])] : [];
     if (inspecao.tipoInspecao === "APOS_LAVAGEM") {
         const result = inspecao.resultadoPosLavagem ?? inspecao.status;
         const lines = [

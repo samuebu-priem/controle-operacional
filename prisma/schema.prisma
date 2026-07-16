@@ -174,44 +174,47 @@ model Manufacturer {
 }
 
 model Product {
-  id                          String                     @id @default(cuid())
-  name                        String
-  normalizedName              String                     @unique
-  chemicalName                String?
-  internalCode                String?                    @unique
-  unNumber                    String?
-  manufacturerId              String?
-  familyId                    String?
-  physicalState               String?
-  color                       String?
-  odor                        String?
-  polarity                    String?
-  solubility                  String?
-  flammability                String?
-  corrosivity                 String?
-  toxicity                    String?
-  riskClass                   String?
-  riskLevel                   ProductRiskLevel           @default(LOW)
-  requiresSteam               Boolean                    @default(false)
-  washType                    String?
-  recommendedCleaningProducts String?
-  washDifficulty              ProductWashDifficulty      @default(LOW)
-  averageWashMinutes          Int?
-  criticalPoints              String?
-  residueHidePoints           String?
-  mainRejectionCauses         String?
-  approvalCriteria            String?
-  notes                       String?
-  manualVersion               String?
-  active                      Boolean                    @default(true)
-  createdAt                   DateTime                   @default(now())
-  updatedAt                   DateTime                   @updatedAt
-  manufacturer                Manufacturer?              @relation(fields: [manufacturerId], references: [id], onDelete: SetNull)
-  family                      ProductFamily?             @relation(fields: [familyId], references: [id], onDelete: SetNull)
-  aliases                     ProductAlias[]
-  history                     ProductHistory[]
-  documents                   ProductDocument[]
-  inspections                 ProductInspectionHistory[]
+  id                             String                     @id @default(cuid())
+  name                           String
+  normalizedName                 String                     @unique
+  chemicalName                   String?
+  internalCode                   String?                    @unique
+  unNumber                       String?
+  manufacturerId                 String?
+  familyId                       String?
+  physicalState                  String?
+  color                          String?
+  odor                           String?
+  polarity                       String?
+  solubility                     String?
+  flammability                   String?
+  corrosivity                    String?
+  toxicity                       String?
+  riskClass                      String?
+  riskLevel                      ProductRiskLevel           @default(LOW)
+  requiresSteam                  Boolean                    @default(false)
+  washingProcedure               WashingProcedure           @default(NOT_DEFINED)
+  washingProcedureNotes          String?
+  washingProcedureManualOverride Boolean                    @default(false)
+  washType                       String?
+  recommendedCleaningProducts    String?
+  washDifficulty                 ProductWashDifficulty      @default(LOW)
+  averageWashMinutes             Int?
+  criticalPoints                 String?
+  residueHidePoints              String?
+  mainRejectionCauses            String?
+  approvalCriteria               String?
+  notes                          String?
+  manualVersion                  String?
+  active                         Boolean                    @default(true)
+  createdAt                      DateTime                   @default(now())
+  updatedAt                      DateTime                   @updatedAt
+  manufacturer                   Manufacturer?              @relation(fields: [manufacturerId], references: [id], onDelete: SetNull)
+  family                         ProductFamily?             @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  aliases                        ProductAlias[]
+  history                        ProductHistory[]
+  documents                      ProductDocument[]
+  inspections                    ProductInspectionHistory[]
 
   @@index([name])
   @@index([chemicalName])
@@ -266,14 +269,16 @@ model ProductDocument {
 }
 
 model ProductInspectionHistory {
-  id              String   @id @default(cuid())
-  productId       String
-  inspectionId    String   @unique
-  washTimeMinutes Int?
-  notes           String?
-  createdAt       DateTime @default(now())
-  product         Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  inspection      Inspecao @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  id                              String            @id @default(cuid())
+  productId                       String
+  inspectionId                    String            @unique
+  washTimeMinutes                 Int?
+  notes                           String?
+  productWashingProcedureSnapshot WashingProcedure?
+  productWashingNotesSnapshot     String?
+  createdAt                       DateTime          @default(now())
+  product                         Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inspection                      Inspecao          @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 
   @@index([productId, createdAt])
 }
@@ -288,6 +293,14 @@ enum ProductWashDifficulty {
   LOW
   MEDIUM
   HIGH
+}
+
+enum WashingProcedure {
+  WASH_ONLY
+  STEAM_ONLY
+  WASH_AND_STEAM
+  NO_WASH_REQUIRED
+  NOT_DEFINED
 }
 
 model PontoCritico {

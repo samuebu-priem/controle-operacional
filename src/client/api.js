@@ -236,7 +236,9 @@ export async function getProductDashboard() { return request("/api/products/dash
 export async function createProduct(payload) { return request("/api/products", { method: "POST", body: JSON.stringify(payload) }); }
 export async function updateProduct(id, payload) { return request(`/api/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) }); }
 export async function deleteProduct(id) { return request(`/api/products/${encodeURIComponent(id)}`, { method: "DELETE" }); }
-export async function importProducts(file, version = "") {
-    const form = new FormData(); form.append("file", file); if (version) form.append("version", version);
+export async function previewProductImport(file) { const form = new FormData(); form.append("file", file); return request("/api/products/import/preview", { method: "POST", body: form }); }
+export async function importProducts(file, version = "", overrideManual = false) {
+    const form = new FormData(); form.append("file", file); if (version) form.append("version", version); form.append("overrideManual", String(overrideManual));
     return request("/api/products/import", { method: "POST", body: form });
 }
+export async function bulkUpdateProductProcedure(ids, washingProcedure, washingProcedureNotes = "") { return request("/api/products/bulk/procedure", { method: "PATCH", body: JSON.stringify({ ids, washingProcedure, washingProcedureNotes }) }); }
