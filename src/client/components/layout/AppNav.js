@@ -1,25 +1,5 @@
-import { jsx as _jsx } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { NavLink } from "react-router-dom";
 import { isGestor } from "../../utils/auth";
-
-const items = [
-  { label: "Inicio", to: "/" },
-  { label: "Colaboradores", to: "/colaboradores" },
-  { label: "Nova inspecao", to: "/nova-inspecao" },
-  { label: "Historico", to: "/historico" },
-  { label: "Registro de frotas", to: "/registro-frotas" },
-  { label: "Gestao de Patio", to: "/patio" },
-  { label: "⚗ Produtos", to: "/produtos" },
-  { label: "Painel Gerencial", to: "/painel-gerencial" }
-];
-
-export default function AppNav() {
-  const canSeeManagerArea = isGestor();
-  const visibleItems = items.filter((item) => item.to !== "/painel-gerencial" || canSeeManagerArea);
-
-  return _jsx("nav", {
-    className: "app-nav",
-    "aria-label": "Navegacao principal",
-    children: visibleItems.map((item) => _jsx(NavLink, { to: item.to, end: item.to === "/", className: ({ isActive }) => `nav-item${isActive ? " active" : ""}`, children: item.label }, item.to))
-  });
-}
+const items=[{label:"Início",icon:"⌂",to:"/"},{label:"Colaboradores",icon:"♙",to:"/colaboradores"},{label:"Nova inspeção",icon:"＋",to:"/nova-inspecao"},{label:"Histórico",icon:"◷",to:"/historico"},{label:"Registro de frotas",icon:"▣",to:"/registro-frotas"},{label:"Gestão de Pátio",icon:"⌖",to:"/patio"},{label:"Produtos",icon:"⚗",to:"/produtos"},{label:"Painel Gerencial",icon:"▥",to:"/painel-gerencial",manager:true}];
+export default function AppNav(){const visible=items.filter(item=>!item.manager||isGestor());return _jsxs("nav",{className:"app-nav","aria-label":"Navegação principal",children:[_jsxs("div",{className:"app-nav__brand",children:[_jsx("span",{children:"CO"}),_jsxs("div",{children:[_jsx("strong",{children:"Controle"}),_jsx("small",{children:"Operacional"})]})]}),_jsx("div",{className:"app-nav__items",children:visible.map(item=>_jsxs(NavLink,{to:item.to,end:item.to==="/",className:({isActive})=>`nav-item${isActive?" active":""}`,children:[_jsx("i",{className:"nav-item__icon","aria-hidden":"true",children:item.icon}),_jsx("span",{children:item.label})]},item.to))})]})}

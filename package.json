@@ -14,7 +14,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "lint": "eslint .",
-    "test": "tsx --test src/server/modules/inspecoes/performance.utils.test.ts src/server/middleware/permissions.test.ts src/server/modules/yard/yard.service.test.ts src/server/modules/yard/yard-bulk.utils.test.ts src/client/pages/yard-responsive.test.ts src/client/pages/inspection-flow-responsive.test.ts"
+    "test": "tsx --test src/server/modules/inspecoes/performance.utils.test.ts src/server/middleware/permissions.test.ts src/server/modules/yard/yard.service.test.ts src/server/modules/yard/yard-bulk.utils.test.ts src/client/pages/yard-responsive.test.ts src/client/pages/inspection-flow-responsive.test.ts src/client/styles/design-system.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
