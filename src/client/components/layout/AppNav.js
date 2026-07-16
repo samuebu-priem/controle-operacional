@@ -1,5 +1,22 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { createElement as h } from "react";
 import { NavLink } from "react-router-dom";
 import { isGestor } from "../../utils/auth";
-const items=[{label:"Início",icon:"⌂",to:"/"},{label:"Colaboradores",icon:"♙",to:"/colaboradores"},{label:"Nova inspeção",icon:"＋",to:"/nova-inspecao"},{label:"Histórico",icon:"◷",to:"/historico"},{label:"Registro de frotas",icon:"▣",to:"/registro-frotas"},{label:"Gestão de Pátio",icon:"⌖",to:"/patio"},{label:"Produtos",icon:"⚗",to:"/produtos"},{label:"Painel Gerencial",icon:"▥",to:"/painel-gerencial",manager:true}];
-export default function AppNav(){const visible=items.filter(item=>!item.manager||isGestor());return _jsxs("nav",{className:"app-nav","aria-label":"Navegação principal",children:[_jsxs("div",{className:"app-nav__brand",children:[_jsx("span",{children:"CO"}),_jsxs("div",{children:[_jsx("strong",{children:"Controle"}),_jsx("small",{children:"Operacional"})]})]}),_jsx("div",{className:"app-nav__items",children:visible.map(item=>_jsxs(NavLink,{to:item.to,end:item.to==="/",className:({isActive})=>`nav-item${isActive?" active":""}`,children:[_jsx("i",{className:"nav-item__icon","aria-hidden":"true",children:item.icon}),_jsx("span",{children:item.label})]},item.to))})]})}
+
+export const navigationItems = [
+  { label: "Início", icon: "⌂", to: "/" },
+  { label: "Colaboradores", icon: "♙", to: "/colaboradores" },
+  { label: "Nova inspeção", icon: "＋", to: "/nova-inspecao" },
+  { label: "Histórico", icon: "◷", to: "/historico" },
+  { label: "Registro de frotas", icon: "▣", to: "/registro-frotas" },
+  { label: "Gestão de Pátio", icon: "⌖", to: "/patio" },
+  { label: "Produtos", icon: "⚗", to: "/produtos" },
+  { label: "Painel Gerencial", icon: "▥", to: "/painel-gerencial", manager: true }
+];
+
+export default function AppNav({ className = "", onNavigate } = {}) {
+  const visible = navigationItems.filter((item) => !item.manager || isGestor());
+  return h("nav", { className: `app-nav ${className}`.trim(), "aria-label": "Navegação principal" },
+    h("div", { className: "app-nav__brand" }, h("span", null, "CO"), h("div", null, h("strong", null, "Controle"), h("small", null, "Operacional"))),
+    h("div", { className: "app-nav__items" }, visible.map((item) => h(NavLink, { key: item.to, to: item.to, end: item.to === "/", onClick: onNavigate, className: ({ isActive }) => `nav-item${isActive ? " active" : ""}` }, h("i", { className: "nav-item__icon", "aria-hidden": "true" }, item.icon), h("span", null, item.label))))
+  );
+}
