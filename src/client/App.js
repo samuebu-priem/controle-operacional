@@ -6,7 +6,7 @@ import HistoricoInspecoesPage from "./pages/HistoricoInspecoesPage";
 import InspecaoDetalhePage from "./pages/InspecaoDetalhePage";
 import FrotaHistoricoPage from "./pages/FrotaHistoricoPage";
 import LoginPage from "./pages/LoginPage";
-import NovaInspecaoPage from "./pages/NovaInspecaoPage";
+import NovaInspecaoPage from "./pages/NovaInspecaoPage.jsx";
 import ProfilePage from "./pages/ProfilePage";
 import RegistroFrotasPage from "./pages/RegistroFrotasPage";
 import RecorrenciaDetalhePage from "./pages/RecorrenciaDetalhePage";
